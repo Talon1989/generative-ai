@@ -47,9 +47,15 @@ tensorboard_callback = keras.callbacks.TensorBoard(log_dir="./logs")
 # )
 
 
+PATH = '../global_data/CelebA/img_align_celeba/img_align_celeba'
 
+train_data = keras.utils.image_dataset_from_directory(
+    PATH, labels=None, color_mode='rgb', image_size=[64, 64], batch_size=128, shuffle=True, seed=42, interpolation='bilinear'
+)
+train = train_data.map(lambda x: preprocess(x))
 
-
-
+vae.fit(
+    train, epochs=5, batch_size=100, shuffle=True
+)
 
 
