@@ -75,13 +75,25 @@ def create_autoencoder():
     return encoder, decoder, autoencoder
 
 
+def create_encoder():
+    encoder_input = keras.layers.Input(shape=(32, 32, 1), name="encoder_input")
+    x = keras.layers.Conv2D(32, (3, 3), strides=2, activation='relu', padding="same", name='conv_1')(encoder_input)
+    x = keras.layers.Conv2D(64, (3, 3), strides=2, activation='relu', padding="same", name='conv_2')(x)
+    x = keras.layers.Conv2D(128, (3, 3), strides=2, activation='relu', padding="same", name='conv_3')(x)
+    shape_before_flattening = K.int_shape(x)[1:]
+    x = keras.layers.Flatten(name='flatten')(x)
+    encoder_output = keras.layers.Dense(2, name="encoder_output")(x)
+    encoder = keras.models.Model(encoder_input, encoder_output)
+    return encoder, shape_before_flattening
+
+
 def create_decoder(shape_before_flattening):
     decoder_input = keras.layers.Input(shape=(2, ), name='decoder_input')
-    x = keras.layers.Dense(np.prod(shape_before_flattening))(decoder_input)
-    x = keras.layers.Reshape(target_shape=shape_before_flattening)(x)
-    x = keras.layers.Conv2DTranspose(128, [3, 3], strides=2, activation='relu', padding='same')(x)
-    x = keras.layers.Conv2DTranspose(64, [3, 3], strides=2, activation='relu', padding='same')(x)
-    x = keras.layers.Conv2DTranspose(32, [3, 3], strides=2, activation='relu', padding='same')(x)
+    x = keras.layers.Dense(np.prod(shape_before_flattening), name='dense')(decoder_input)
+    x = keras.layers.Reshape(target_shape=shape_before_flattening, name='reshape')(x)
+    x = keras.layers.Conv2DTranspose(128, [3, 3], strides=2, activation='relu', padding='same', name='conv_T_1')(x)
+    x = keras.layers.Conv2DTranspose(64, [3, 3], strides=2, activation='relu', padding='same', name='conv_T_2')(x)
+    x = keras.layers.Conv2DTranspose(32, [3, 3], strides=2, activation='relu', padding='same', name='conv_T_3')(x)
     decoder_output = keras.layers.Conv2D(
         1, [3, 3], strides=1, activation='sigmoid', padding='same', name='decoder_output'
     )(x)
@@ -96,7 +108,7 @@ def create_decoder(shape_before_flattening):
 
 
 class Sampling(keras.layers.Layer):
-    def call(self, inputs, **kwargs):
+    def call(self, inputs):
         z_mean, z_log_var = inputs
         sample = K.random_normal(shape=[tf.shape(z_mean)[0], tf.shape(z_mean)[1]])  # to use with reparameterization trick
         return z_mean + tf.exp(1/2 * z_log_var) * sample
@@ -104,6 +116,7 @@ class Sampling(keras.layers.Layer):
 
 def create_variational_encoder():
     encoder_input = keras.layers.Input(shape=(32, 32, 1), name="encoder_input")
+    # encoder_input = keras.layers.Input(shape=(64, 64, 1), name="encoder_input")
     x = keras.layers.Conv2D(32, (3, 3), strides=2, activation='relu', padding="same")(encoder_input)
     x = keras.layers.Conv2D(64, (3, 3), strides=2, activation='relu', padding="same")(x)
     x = keras.layers.Conv2D(128, (3, 3), strides=2, activation='relu', padding="same")(x)
@@ -118,8 +131,8 @@ def create_variational_encoder():
 
 class VAE(keras.models.Model):
 
-    def __init__(self, encoder, decoder, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, encoder, decoder, **kwargs):
+        super().__init__(**kwargs)
         self.encoder = encoder
         self.decoder = decoder
         self.total_loss_tracker = keras.metrics.Mean(name='total_loss')
@@ -140,14 +153,14 @@ class VAE(keras.models.Model):
         return z_mean, z_log_var, reconstruction
 
     def train_step(self, data):
-        with tf.GradientTape() as tape:
+        with tf.GradientTape() as tape:  # context manager
             z_mean, z_log_var, reconstruction = self(data)
             reconstruction_loss = tf.reduce_mean(
-                500 * keras.losses.binary_crossentropy(data, reconstruction, axis=[1, 2, 3])
+                500 * keras.losses.binary_crossentropy(data, reconstruction, axis=(1, 2, 3))
             )
             kl_loss = tf.reduce_mean(
                 tf.reduce_sum(
-                    -1/2 * (1 + tf.exp(z_log_var) - tf.square(z_mean) - tf.exp(z_log_var)), axis=1
+                    -1/2 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var)), axis=1
                 )
             )
             total_loss = reconstruction_loss + kl_loss
@@ -159,8 +172,79 @@ class VAE(keras.models.Model):
         return {m.name: m.result() for m in self.metrics}
 
 
+####################################################################################
+#  ENCODER AND DECODER FOR CELEBA
 
 
+from face_parameters import *
+
+
+def create_variational_encoder_celeba():
+    encoder_input = keras.layers.Input(
+        shape=(IMAGE_SIZE, IMAGE_SIZE, CHANNELS), name="encoder_input"
+    )
+    x = keras.layers.Conv2D(NUM_FEATURES, kernel_size=3, strides=2, padding="same")(
+        encoder_input
+    )
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    x = keras.layers.Conv2D(NUM_FEATURES, kernel_size=3, strides=2, padding="same")(x)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    x = keras.layers.Conv2D(NUM_FEATURES, kernel_size=3, strides=2, padding="same")(x)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    x = keras.layers.Conv2D(NUM_FEATURES, kernel_size=3, strides=2, padding="same")(x)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    x = keras.layers.Conv2D(NUM_FEATURES, kernel_size=3, strides=2, padding="same")(x)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    shape_before_flattening = K.int_shape(x)[1:]  # the decoder will need this!
+
+    x = keras.layers.Flatten()(x)
+    z_mean = keras.layers.Dense(Z_DIM, name="z_mean")(x)
+    z_log_var = keras.layers.Dense(Z_DIM, name="z_log_var")(x)
+    z = Sampling()([z_mean, z_log_var])
+
+    encoder = keras.models.Model(encoder_input, [z_mean, z_log_var, z], name="encoder")
+    # encoder.summary()
+    return encoder, shape_before_flattening
+
+
+def create_decoder_celeba(shape_before_flattening):
+    decoder_input = keras.layers.Input(shape=(Z_DIM,), name="decoder_input")
+    x = keras.layers.Dense(np.prod(shape_before_flattening))(decoder_input)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    x = keras.layers.Reshape(shape_before_flattening)(x)
+    x = keras.layers.Conv2DTranspose(
+        NUM_FEATURES, kernel_size=3, strides=2, padding="same"
+    )(x)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    x = keras.layers.Conv2DTranspose(
+        NUM_FEATURES, kernel_size=3, strides=2, padding="same"
+    )(x)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    x = keras.layers.Conv2DTranspose(
+        NUM_FEATURES, kernel_size=3, strides=2, padding="same"
+    )(x)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    x = keras.layers.Conv2DTranspose(NUM_FEATURES, kernel_size=3, strides=2, padding="same")(x)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    x = keras.layers.Conv2DTranspose(NUM_FEATURES, kernel_size=3, strides=2, padding="same")(x)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.LeakyReLU()(x)
+    decoder_output = keras.layers.Conv2DTranspose(
+        CHANNELS, kernel_size=3, strides=1, activation="sigmoid", padding="same"
+    )(x)
+    decoder = keras.models.Model(decoder_input, decoder_output)
+    # decoder.summary()
+    return decoder
 
 
 
