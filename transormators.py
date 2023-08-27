@@ -8,7 +8,12 @@ def covariance_matrix(matrix: np.array):
     return relation_matrix / (matrix.shape[0] - 1)
 
 
-
+def correlation_matrix(matrix: np.array):
+    mean_vector = np.mean(matrix, axis=0)
+    std_vector = np.std(matrix, axis=0)
+    normalized_matrix = np.divide(np.subtract(matrix, mean_vector), std_vector)
+    relation_matrix = np.dot(normalized_matrix.T, normalized_matrix)
+    return relation_matrix / matrix.shape[0]
 
 
 
