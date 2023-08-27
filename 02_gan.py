@@ -5,6 +5,7 @@ keras = tf.keras
 import keras.backend as K
 from GanModels import Discriminator
 from GanModels import Generator
+from GanModels import DCGAN
 
 
 train_data = keras.utils.image_dataset_from_directory(
@@ -27,12 +28,162 @@ def preprocess(img):  # reprocessing the image to get values in range [-1, 1] su
 train = train_data.map(lambda x: preprocess(x))
 
 
-#  TESTING
-discriminator = Discriminator()
-discriminator.compile(optimizer=keras.optimizers.Adam(1/1_000))
-test_train = np.asarray(list(train.unbatch()))
-#  saving small batches of test_train for testing
-np.save(file='data/test_train_8_batch.npy', arr=test_train[0:8])
-generator = Generator()
-discriminator.compile(optimizer=keras.optimizers.Adam(1/1_000))
-random_latent_vectors = tf.random.normal(shape=[3, 100], mean=0., stddev=1.)
+# #  TESTING
+# discriminator = Discriminator()
+# discriminator.compile(optimizer=keras.optimizers.Adam(1/1_000))
+# test_train = np.asarray(list(train.unbatch()))
+# #  saving small batches of test_train for testing
+# np.save(file='data/test_train_8_batch.npy', arr=test_train[0:8])
+# generator = Generator()
+# discriminator.compile(optimizer=keras.optimizers.Adam(1/1_000))
+# random_latent_vectors = tf.random.normal(shape=[3, 100], mean=0., stddev=1.)
+
+
+discriminator, generator = Discriminator(), Generator()
+dcgan = DCGAN(discriminator=discriminator, generator=generator)
+dcgan.compile(
+    d_optimizer=keras.optimizers.Adam(learning_rate=1/5_000, beta_1=1/2, beta_2=999/1_000),
+    g_optimizer=keras.optimizers.Adam(learning_rate=1/5_000, beta_1=1/2, beta_2=999/1_000)
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

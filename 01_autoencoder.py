@@ -34,12 +34,14 @@ def old_preprocess(imgs):
 # vae.compile(optimizer=keras.optimizers.Adam(learning_rate=1/1_000))
 
 model_checkpoint_callback = keras.callbacks.ModelCheckpoint(
-    filepath="./data/checkpoint",
+    filepath="./data/vae_faces_checkpoint",
     save_weights_only=False,
-    save_freq="epoch",
-    monitor="loss",
+    # save_freq="epoch",
+    save_freq=20,  # saving the checkpoint every 20 batches
+    # monitor='total_loss_tracker',
     mode="min",
-    save_best_only=True,
+    # save_best_only=True,
+    save_best_only=False,
     verbose=0,
 )
 tensorboard_callback = keras.callbacks.TensorBoard(log_dir="./logs")
@@ -78,25 +80,25 @@ vae.compile(
     optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE)
 )
 
-vae.fit(
-    train, epochs=5, batch_size=100, shuffle=True
-)
-vae.save('./data/celeba_vae')
-encoder.save('./data/celeba_encoder')
-decoder.save('./data/celeba_decoder')
-
-
-def face_generation():
-    grid_width, grid_height = 10, 3
-    image_size = grid_width * grid_height
-    z_sample = np.random.normal(loc=0, scale=1, size=[image_size, 200])
-    reconstructions = decoder.predict(z_sample)
-    fig = plt.figure(figsize=(18, 5))
-    fig.subplots_adjust(hspace=.4, wspace=.4)
-    for i in range(image_size):
-        ax = fig.add_subplot(grid_height, grid_width, i+1)
-        ax.axis('off')
-        ax.imshow(reconstructions[i, :, :])
+# vae.fit(
+#     train, epochs=5, batch_size=train_data._batch_size, shuffle=True, callbacks=[model_checkpoint_callback]
+# )
+# vae.save('./data/celeba_vae')
+# encoder.save('./data/celeba_encoder')
+# decoder.save('./data/celeba_decoder')
+#
+#
+# def face_generation():
+#     grid_width, grid_height = 10, 3
+#     image_size = grid_width * grid_height
+#     z_sample = np.random.normal(loc=0, scale=1, size=[image_size, 200])
+#     reconstructions = decoder.predict(z_sample)
+#     fig = plt.figure(figsize=(18, 5))
+#     fig.subplots_adjust(hspace=.4, wspace=.4)
+#     for i in range(image_size):
+#         ax = fig.add_subplot(grid_height, grid_width, i+1)
+#         ax.axis('off')
+#         ax.imshow(reconstructions[i, :, :])
 
 
 
