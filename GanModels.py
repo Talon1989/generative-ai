@@ -5,8 +5,12 @@ keras = tf.keras
 
 class Discriminator(keras.models.Model):
 
-    def __init__(self, image_size=(64, 64, 1)):
+    def __init__(self, image_size=(64, 64, 1, )):
         super().__init__()
+        self.input_layer = keras.layers.Input(shape=image_size)
+        # self.layer_1 = keras.layers.Conv2D(
+        #     filters=64, kernel_size=[4, 4], strides=2, padding='same', use_bias=False
+        # )
         self.layer_1 = keras.layers.Conv2D(
             filters=64, kernel_size=[4, 4], strides=2, padding='same', use_bias=False, input_shape=image_size
         )
@@ -25,6 +29,8 @@ class Discriminator(keras.models.Model):
         self.flatten = keras.layers.Flatten()
 
     def call(self, inputs, training=False):
+        # x = self.input_layer(inputs)
+        # x = self.layer_1(x, training=training)
         x = self.layer_1(inputs, training=training)
         x = self.leaky_relu_1(x, training=training)
         x = self.dropout(x, training=training)
@@ -47,10 +53,12 @@ class Discriminator(keras.models.Model):
 
 class Generator(keras.models.Model):
 
-    def __init__(self, z_dim=100):
+    def __init__(self, z_dim=(100, )):
         super().__init__()
         #  input shape is a 100 element vector sampled from multivariate standard normal distribution
-        self.reshape = keras.layers.Reshape(target_shape=[1, 1, z_dim], input_shape=(z_dim, ))
+        self.input_layer = keras.layers.Input(shape=z_dim)
+        # self.reshape = keras.layers.Reshape(target_shape=[1, 1, z_dim])
+        self.reshape = keras.layers.Reshape(target_shape=[1, 1, z_dim[0]], input_shape=z_dim)
         self.layer_1 = keras.layers.Conv2DTranspose(filters=512, kernel_size=[4, 4], strides=1, padding='valid', use_bias=False)
         self.layer_2 = keras.layers.Conv2DTranspose(256, kernel_size=[4, 4], strides=2, padding='same', use_bias=False)
         self.layer_3 = keras.layers.Conv2DTranspose(128, kernel_size=[4, 4], strides=2, padding='same', use_bias=False)
@@ -66,6 +74,8 @@ class Generator(keras.models.Model):
         self.leaky_relu_4 = keras.layers.LeakyReLU(alpha=1/5)
 
     def call(self, inputs, training=False):
+        # x = self.input_layer(inputs)
+        # x = self.reshape(x)
         x = self.reshape(inputs)
         x = self.layer_1(x, training=training)
         x = self.batch_norm_1(x, training=training)
@@ -147,7 +157,8 @@ class WganDiscriminator(Discriminator):
     #  batch normalization shouldn't be used on WGAN discriminator since it creates correlation
     #  between images in the same batch, which makes the gradient penalty loss less effective
     def call(self, inputs, training=False):
-        x = self.layer_1(inputs, training=training)
+        x = self.input_layer(inputs)
+        x = self.layer_1(x, training=training)
         x = self.leaky_relu_1(x, training=training)
         x = self.dropout(x, training=training)
         x = self.layer_2(x, training=training)
@@ -237,11 +248,59 @@ class WGAN_GP(keras.models.Model):
         g_grad = g_tape.gradient(g_loss, self.generator.trainable_variables)
         self.g_optimizer.apply_gradients(zip(g_grad, self.generator.trainable_variables))
 
-        self.c_loss_metric.update_state(d_loss)
-        self.c_wass_loss_metric.update_state(d_w_loss)
-        self.c_gp_metric.update_state(d_gp)
+        self.d_loss_metric.update_state(d_loss)
+        self.d_wass_loss_metric.update_state(d_w_loss)
+        self.d_gp_metric.update_state(d_gp)
         self.g_loss_metric.update_state(g_loss)
         return {m.name: m.result() for m in self.metrics}
+
+
+################### WGAN ###################
+
+
+class CGANDiscriminator(keras.models.Model):
+    # TODO
+    def __init__(self, image_size=(64, 64, 1, )):
+        super().__init__()
+        self.concatenate = keras.layers.Concatenate(axis=-1)
+        self.input_1, self.input_2 = keras.layers.Input(shape=image_size), keras.layers.Input(shape=(64, 64, 2))
+        self.layer_1 = keras.layers.Conv2D(
+            filters=64, kernel_size=[4, 4], strides=2, padding='same', use_bias=False
+        )
+        self.layer_2 = keras.layers.Conv2D(128, kernel_size=[4, 4], strides=2, padding='same', use_bias=False)
+        self.layer_3 = keras.layers.Conv2D(256, kernel_size=[4, 4], strides=2, padding='same', use_bias=False)
+        self.layer_4 = keras.layers.Conv2D(512, kernel_size=[4, 4], strides=2, padding='same', use_bias=False)
+        self.layer_5 = keras.layers.Conv2D(1, kernel_size=[4, 4], strides=1, padding='valid', use_bias=False, activation='sigmoid')
+        self.batch_norm_1 = keras.layers.BatchNormalization(momentum=9/10)
+        self.batch_norm_2 = keras.layers.BatchNormalization(momentum=9/10)
+        self.batch_norm_3 = keras.layers.BatchNormalization(momentum=9/10)
+        self.leaky_relu_1 = keras.layers.LeakyReLU(alpha=1/5)
+        self.leaky_relu_2 = keras.layers.LeakyReLU(alpha=1/5)
+        self.leaky_relu_3 = keras.layers.LeakyReLU(alpha=1/5)
+        self.leaky_relu_4 = keras.layers.LeakyReLU(alpha=1/5)
+        self.dropout = keras.layers.Dropout(rate=3/10)
+        self.flatten = keras.layers.Flatten()
+
+    def call(self, inputs, training=False):
+        x = self.concatenate([self.input_1(inputs[0]), self.input_2(inputs[0])])
+        x = self.layer_1(inputs, training=training)
+        x = self.leaky_relu_1(x, training=training)
+        x = self.dropout(x, training=training)
+        x = self.layer_2(x, training=training)
+        x = self.batch_norm_1(x, training=training)
+        x = self.leaky_relu_2(x, training=training)
+        x = self.dropout(x, training=training)
+        x = self.layer_3(x, training=training)
+        x = self.batch_norm_2(x, training=training)
+        x = self.leaky_relu_3(x, training=training)
+        x = self.dropout(x, training=training)
+        x = self.layer_4(x, training=training)
+        x = self.batch_norm_3(x, training=training)
+        x = self.leaky_relu_4(x, training=training)
+        x = self.dropout(x, training=training)
+        x = self.layer_5(x, training=training)
+        x = self.flatten(x)
+        return x
 
 
 
