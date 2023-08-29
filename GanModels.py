@@ -1,5 +1,8 @@
 import numpy as np
 import tensorflow as tf
+from keras.backend import ones_like
+from mkl_random import rand
+
 keras = tf.keras
 
 
@@ -56,7 +59,6 @@ class Generator(keras.models.Model):
     def __init__(self, z_dim=(100, )):
         super().__init__()
         #  input shape is a 100 element vector sampled from multivariate standard normal distribution
-        self.input_layer = keras.layers.Input(shape=z_dim)
         # self.reshape = keras.layers.Reshape(target_shape=[1, 1, z_dim])
         self.reshape = keras.layers.Reshape(target_shape=[1, 1, z_dim[0]], input_shape=z_dim)
         self.layer_1 = keras.layers.Conv2DTranspose(filters=512, kernel_size=[4, 4], strides=1, padding='valid', use_bias=False)
@@ -178,7 +180,7 @@ class WganDiscriminator(Discriminator):
 #  Wasserstein Generative Adversarial Network with Gradient Penalty
 class WGAN_GP(keras.models.Model):
 
-    def __init__(self, discriminator, generator, latent_dim=100, d_steps=3, gp_weight=10):
+    def __init__(self, discriminator, generator, latent_dim=100, d_steps=3, gp_weight=10.):
         super(WGAN_GP, self).__init__()
         self.discriminator = discriminator
         self.generator = generator
@@ -259,7 +261,7 @@ class WGAN_GP(keras.models.Model):
 
 
 class CGANDiscriminator(Discriminator):
-    def __init__(self, image_size=(64, 64, 1, ), label_size=(64, 64, 1)):
+    def __init__(self, image_size=(64, 64, 3, ), label_size=(64, 64, 2, )):
         super().__init__(image_size)
         self.concatenate = keras.layers.Concatenate(axis=-1, input_shape=[image_size, label_size])
         self.layer_1 = keras.layers.Conv2D(filters=64, kernel_size=[4, 4], strides=2, padding='same', use_bias=False)
@@ -287,12 +289,14 @@ class CGANDiscriminator(Discriminator):
         return x
 
 
+#  hardcoded to work with 3 (rgb) channels
 class CGANGenerator(Generator):
 
-    def __init__(self, z_dim=(100, ), label_dim=(10, )):
+    def __init__(self, z_dim=(100, ), label_dim=(2, )):
         super().__init__(z_dim)
         self.concatenate = keras.layers.Concatenate(axis=-1, input_shape=[z_dim, label_dim])
         self.reshape = keras.layers.Reshape(target_shape=[1, 1, z_dim[0] + label_dim[0]])
+        self.layer_5 = keras.layers.Conv2DTranspose(3, kernel_size=[4, 4], strides=2, padding='same', use_bias=False, activation='tanh')
 
     def call(self, inputs, training=False):
         x = self.concatenate([inputs[0], inputs[1]])
@@ -313,47 +317,83 @@ class CGANGenerator(Generator):
         return x
 
 
-#  Conditional Generative Adversarial Network
+#  Conditional Wasserstein Generative Adversarial Network with Gradient Penalty
 class CGAN(keras.models.Model):
 
-    def __init__(self, discriminator, generator, latent_dim=100, d_steps=3, gp_weight=10):
+    def __init__(self, discriminator, generator, latent_dim=100, d_steps=3, gp_weight=10.):
         super(CGAN, self).__init__()
         self.discriminator = discriminator
         self.generator = generator
         self.latent_dim = latent_dim
+        self.d_steps = d_steps
+        self.gp_weight = gp_weight
 
     def compile(self, d_optimizer, g_optimizer):
         super(CGAN, self).compile()
-        self.loss_function = keras.losses.BinaryCrossentropy()
         self.d_optimizer = d_optimizer
         self.g_optimizer = g_optimizer
-        self.d_loss_metric = keras.metrics.Mean(name='d_loss')
-        self.d_real_acc_metric = keras.metrics.BinaryAccuracy(name='d_real_acc')
-        self.d_fake_acc_metric = keras.metrics.BinaryAccuracy(name='d_fake_acc')
-        self.d_acc_metric = keras.metrics.BinaryAccuracy(name="d_acc")
-        self.g_loss_metric = keras.metrics.Mean(name='g_loss')
-        self.g_acc_metric = keras.metrics.BinaryAccuracy(name='g_acc')
+        self.d_wass_loss_metric = keras.metrics.Mean(name="d_wass_loss")
+        self.d_gp_metric = keras.metrics.Mean(name="d_gp")
+        self.d_loss_metric = keras.metrics.Mean(name="d_loss")
+        self.g_loss_metric = keras.metrics.Mean(name="g_loss")
 
     @property
     def metrics(self):
         return [
+            self.d_wass_loss_metric,
+            self.d_gp_metric,
             self.d_loss_metric,
-            self.d_real_acc_metric,
-            self.d_fake_acc_metric,
-            self.d_acc_metric,
-            self.g_loss_metric,
-            self.g_acc_metric,
+            self.g_loss_metric
         ]
+
+    def gradient_penalty(self, batch_size, real_data, fake_data, data_one_hot_label, l_constraint=1.):
+        alpha = tf.random.normal(shape=[batch_size, 1, 1, 1], mean=0., stddev=1.)
+        diff = fake_data - real_data
+        interpolated_data = real_data + alpha * diff
+        with tf.GradientTape() as gp_tape:
+            gp_tape.watch(interpolated_data)  # calculate gradient w respect to interpolated_data
+            predictions = self.discriminator([interpolated_data, data_one_hot_label], training=True)
+        grads = gp_tape.gradient(predictions, [interpolated_data])[0]
+        norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1, 2, 3]))  # l2
+        grad_penalty = tf.reduce_mean((norm - l_constraint) ** 2)  # avg square distance between l2 and L-constraint
+        return grad_penalty
 
     def train_step(self, data):
 
-        batch_size = tf.shape(data)[0]
+        real_data, one_hot_labels = data
+
+        data_one_hot_labels = one_hot_labels[:, None, None, :]
+        data_one_hot_labels = tf.repeat(data_one_hot_labels, repeats=64, axis=1)
+        data_one_hot_labels = tf.repeat(data_one_hot_labels, repeats=64, axis=2)
+        batch_size = tf.shape(real_data)[0]
+
+        for i in range(self.d_steps):
+            random_latent_vectors = tf.random.normal(shape=[batch_size, self.latent_dim])
+            with tf.GradientTape() as d_tape:
+                fake_data = self.generator([random_latent_vectors, one_hot_labels], training=False)
+                fake_preds = self.discriminator([fake_data, data_one_hot_labels], training=True)
+                real_preds = self.discriminator([real_data, data_one_hot_labels], training=True)
+                d_w_loss = tf.reduce_mean(fake_preds - real_preds)
+                d_gp = self.gradient_penalty(
+                    batch_size, real_data, fake_data, data_one_hot_labels
+                )
+                d_loss = d_w_loss + self.gp_weight * d_gp
+            d_grad = d_tape.gradient(d_loss, self.discriminator.trainable_variables)
+            self.d_optimizer.apply_gradients(zip(d_grad, self.discriminator.trainable_variables))
+
         random_latent_vectors = tf.random.normal(shape=[batch_size, self.latent_dim])
+        with tf.GradientTape() as g_tape:
+            fake_data = self.generator([random_latent_vectors, one_hot_labels], training=True)
+            fake_predictions = self.discriminator([fake_data, data_one_hot_labels], training=False)
+            g_loss = tf.reduce_mean(fake_predictions)
+        g_grad = g_tape.gradient(g_loss, self.generator.trainable_variables)
+        self.g_optimizer.apply_gradients(zip(g_grad, self.generator.trainable_variables))
 
-        with tf.GradientTape() as g_tape, tf.GradientTape() as d_tape:
-            # TODO
-            pass
-
+        self.d_loss_metric.update_state(d_loss)
+        self.d_wass_loss_metric.update_state(d_w_loss)
+        self.d_gp_metric.update_state(d_gp)
+        self.g_loss_metric.update_state(g_loss)
+        return {m.name: m.result() for m in self.metrics}
 
 
 
