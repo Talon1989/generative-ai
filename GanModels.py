@@ -255,35 +255,19 @@ class WGAN_GP(keras.models.Model):
         return {m.name: m.result() for m in self.metrics}
 
 
-################### WGAN ###################
+################### CGAN ###################
 
 
-class CGANDiscriminator(keras.models.Model):
-    # TODO
-    def __init__(self, image_size=(64, 64, 1, )):
-        super().__init__()
-        self.concatenate = keras.layers.Concatenate(axis=-1)
-        self.input_1, self.input_2 = keras.layers.Input(shape=image_size), keras.layers.Input(shape=(64, 64, 2))
-        self.layer_1 = keras.layers.Conv2D(
-            filters=64, kernel_size=[4, 4], strides=2, padding='same', use_bias=False
-        )
-        self.layer_2 = keras.layers.Conv2D(128, kernel_size=[4, 4], strides=2, padding='same', use_bias=False)
-        self.layer_3 = keras.layers.Conv2D(256, kernel_size=[4, 4], strides=2, padding='same', use_bias=False)
-        self.layer_4 = keras.layers.Conv2D(512, kernel_size=[4, 4], strides=2, padding='same', use_bias=False)
-        self.layer_5 = keras.layers.Conv2D(1, kernel_size=[4, 4], strides=1, padding='valid', use_bias=False, activation='sigmoid')
-        self.batch_norm_1 = keras.layers.BatchNormalization(momentum=9/10)
-        self.batch_norm_2 = keras.layers.BatchNormalization(momentum=9/10)
-        self.batch_norm_3 = keras.layers.BatchNormalization(momentum=9/10)
-        self.leaky_relu_1 = keras.layers.LeakyReLU(alpha=1/5)
-        self.leaky_relu_2 = keras.layers.LeakyReLU(alpha=1/5)
-        self.leaky_relu_3 = keras.layers.LeakyReLU(alpha=1/5)
-        self.leaky_relu_4 = keras.layers.LeakyReLU(alpha=1/5)
-        self.dropout = keras.layers.Dropout(rate=3/10)
-        self.flatten = keras.layers.Flatten()
+class CGANDiscriminator(Discriminator):
+    def __init__(self, image_size=(64, 64, 1, ), label_size=(64, 64, 1)):
+        super().__init__(image_size)
+        self.concatenate = keras.layers.Concatenate(axis=-1, input_shape=[image_size, label_size])
+        self.layer_1 = keras.layers.Conv2D(filters=64, kernel_size=[4, 4], strides=2, padding='same', use_bias=False)
+        self.layer_5 = keras.layers.Conv2D(1, kernel_size=[4, 4], strides=1, padding='valid', use_bias=False, activation='linear')
 
     def call(self, inputs, training=False):
-        x = self.concatenate([self.input_1(inputs[0]), self.input_2(inputs[0])])
-        x = self.layer_1(inputs, training=training)
+        x = self.concatenate([inputs[0], inputs[1]])
+        x = self.layer_1(x, training=training)
         x = self.leaky_relu_1(x, training=training)
         x = self.dropout(x, training=training)
         x = self.layer_2(x, training=training)
@@ -301,6 +285,79 @@ class CGANDiscriminator(keras.models.Model):
         x = self.layer_5(x, training=training)
         x = self.flatten(x)
         return x
+
+
+class CGANGenerator(Generator):
+
+    def __init__(self, z_dim=(100, ), label_dim=(10, )):
+        super().__init__(z_dim)
+        self.concatenate = keras.layers.Concatenate(axis=-1, input_shape=[z_dim, label_dim])
+        self.reshape = keras.layers.Reshape(target_shape=[1, 1, z_dim[0] + label_dim[0]])
+
+    def call(self, inputs, training=False):
+        x = self.concatenate([inputs[0], inputs[1]])
+        x = self.reshape(x)
+        x = self.layer_1(x, training=training)
+        x = self.batch_norm_1(x, training=training)
+        x = self.leaky_relu_1(x, training=training)
+        x = self.layer_2(x, training=training)
+        x = self.batch_norm_2(x, training=training)
+        x = self.leaky_relu_2(x, training=training)
+        x = self.layer_3(x, training=training)
+        x = self.batch_norm_3(x, training=training)
+        x = self.leaky_relu_3(x, training=training)
+        x = self.layer_4(x, training=training)
+        x = self.batch_norm_4(x, training=training)
+        x = self.leaky_relu_4(x, training=training)
+        x = self.layer_5(x, training=training)
+        return x
+
+
+#  Conditional Generative Adversarial Network
+class CGAN(keras.models.Model):
+
+    def __init__(self, discriminator, generator, latent_dim=100, d_steps=3, gp_weight=10):
+        super(CGAN, self).__init__()
+        self.discriminator = discriminator
+        self.generator = generator
+        self.latent_dim = latent_dim
+
+    def compile(self, d_optimizer, g_optimizer):
+        super(CGAN, self).compile()
+        self.loss_function = keras.losses.BinaryCrossentropy()
+        self.d_optimizer = d_optimizer
+        self.g_optimizer = g_optimizer
+        self.d_loss_metric = keras.metrics.Mean(name='d_loss')
+        self.d_real_acc_metric = keras.metrics.BinaryAccuracy(name='d_real_acc')
+        self.d_fake_acc_metric = keras.metrics.BinaryAccuracy(name='d_fake_acc')
+        self.d_acc_metric = keras.metrics.BinaryAccuracy(name="d_acc")
+        self.g_loss_metric = keras.metrics.Mean(name='g_loss')
+        self.g_acc_metric = keras.metrics.BinaryAccuracy(name='g_acc')
+
+    @property
+    def metrics(self):
+        return [
+            self.d_loss_metric,
+            self.d_real_acc_metric,
+            self.d_fake_acc_metric,
+            self.d_acc_metric,
+            self.g_loss_metric,
+            self.g_acc_metric,
+        ]
+
+    def train_step(self, data):
+
+        batch_size = tf.shape(data)[0]
+        random_latent_vectors = tf.random.normal(shape=[batch_size, self.latent_dim])
+
+        with tf.GradientTape() as g_tape, tf.GradientTape() as d_tape:
+            # TODO
+            pass
+
+
+
+
+
 
 
 

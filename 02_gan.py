@@ -9,6 +9,8 @@ from GanModels import Generator
 from GanModels import DCGAN
 from GanModels import WganDiscriminator
 from GanModels import WGAN_GP
+from GanModels import CGANGenerator
+from GanModels import CGANDiscriminator
 
 
 train_data = keras.utils.image_dataset_from_directory(
@@ -76,13 +78,14 @@ wgan_checkpoint_callback = keras.callbacks.ModelCheckpoint(
     verbose=0,
 )
 wgan_tensorboard_callback = keras.callbacks.TensorBoard(log_dir="./data/logs")
-wgan.fit(train, epochs=200, steps_per_epoch=2, callbacks=[wgan_checkpoint_callback, wgan_tensorboard_callback])
-wgan.generator.save('./data/gan_models/wgan_generator')
-wgan.discriminator.save('./data/gan_models/wgan_discriminator')
+# wgan.fit(train, epochs=200, steps_per_epoch=2, callbacks=[wgan_checkpoint_callback, wgan_tensorboard_callback])
+# wgan.generator.save('./data/gan_models/wgan_generator')
+# wgan.discriminator.save('./data/gan_models/wgan_discriminator')
 
 
-
-
+# cgan_generator = CGANGenerator()
+# cgan_discriminator = CGANDiscriminator()
+# images = np.load(file='data/test_train_8_batch.npy')
 
 
 
