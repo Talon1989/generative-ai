@@ -10,7 +10,7 @@ class Discriminator(keras.models.Model):
 
     def __init__(self, image_size=(64, 64, 1, )):
         super().__init__()
-        self.input_layer = keras.layers.Input(shape=image_size)
+        # self.input_layer = keras.layers.Input(shape=image_size)
         # self.layer_1 = keras.layers.Conv2D(
         #     filters=64, kernel_size=[4, 4], strides=2, padding='same', use_bias=False
         # )
@@ -159,8 +159,7 @@ class WganDiscriminator(Discriminator):
     #  batch normalization shouldn't be used on WGAN discriminator since it creates correlation
     #  between images in the same batch, which makes the gradient penalty loss less effective
     def call(self, inputs, training=False):
-        x = self.input_layer(inputs)
-        x = self.layer_1(x, training=training)
+        x = self.layer_1(inputs, training=training)
         x = self.leaky_relu_1(x, training=training)
         x = self.dropout(x, training=training)
         x = self.layer_2(x, training=training)
