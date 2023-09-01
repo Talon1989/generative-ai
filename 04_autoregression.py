@@ -5,6 +5,7 @@ import numpy as np
 import tensorflow as tf
 keras = tf.keras
 import pandas as pd
+from utilities import *
 
 
 # dataframe_recipe_data = pd.read_json('../global_data/epirecipes/full_format_recipes.json')
@@ -51,6 +52,21 @@ def print_words_and_vector():
     print(text_data[5])
     print()
     print(vectorize_layer(text_data[5]).numpy())
+
+
+# PREPPING INPUT
+
+
+def prepare_inputs(text):
+    text = tf.expand_dims(text, -1)
+    tokenized_sentences = vectorize_layer(text)
+    return tokenized_sentences[:, :-1], tokenized_sentences[:, 1:]
+
+
+train_ds = text_ds.map(prepare_inputs)
+
+
+# LSTM
 
 
 
