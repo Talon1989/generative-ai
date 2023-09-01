@@ -108,17 +108,19 @@ wgan_tensorboard_callback = keras.callbacks.TensorBoard(log_dir="./data/logs")
 
 class ImageGenerator(keras.callbacks.Callback):
 
-    def __init__(self, n_img=10, latent_dim=Z_DIM):
+    def __init__(self, n_img=10, latent_dim=Z_DIM, display_frequency=1):
         super(ImageGenerator, self).__init__()
         self.n_img = n_img
         self.latent_dim = latent_dim
+        self.display_frequency = display_frequency
 
     def on_epoch_end(self, epoch, logs=None):
-        gen_img = self.model.generator(
-            tf.random.normal(shape=[self.n_img, self.latent_dim])
-        )
-        gen_img = (gen_img * 127.5) + 127.5
-        display_generated_images(images=gen_img.numpy(), n=self.n_img)
+        if epoch % self.display_frequency == 0:
+            gen_img = self.model.generator(
+                tf.random.normal(shape=[self.n_img, self.latent_dim])
+            )
+            gen_img = (gen_img * 127.5) + 127.5
+            display_generated_images(images=gen_img.numpy(), n=self.n_img)
 
 
 # FITTING
@@ -126,7 +128,7 @@ class ImageGenerator(keras.callbacks.Callback):
 
 steps_per_epoch = N_FILES // BATCH_SIZE
 wgan.fit(train, epochs=N_EPOCHS, steps_per_epoch=steps_per_epoch,
-         callbacks=[wgan_checkpoint_callback, wgan_tensorboard_callback, ImageGenerator(n_img=2)])
+         callbacks=[wgan_checkpoint_callback, wgan_tensorboard_callback, ImageGenerator(n_img=2, display_frequency=1)])
 wgan.generator.save('./data/gan_models/wgan_generator')
 wgan.discriminator.save('./data/gan_models/wgan_discriminator')
 

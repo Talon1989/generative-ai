@@ -29,3 +29,12 @@ def display_generated_images(images, n=10, size=(20, 3), cmap='gray_r', as_type=
         plt.axis('off')
     plt.show()
     plt.clf()
+
+
+def tokenize_data(data: list):
+    # import re
+    # def pad_punctuation(s):
+    #     s = re.sub(f"([{str.pun}])", r" \1 ", s)
+    #     s = re.sub(" +", " ", s)
+    #     return s
+    pass
