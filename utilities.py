@@ -19,7 +19,7 @@ def correlation_matrix(matrix: np.array):
     return relation_matrix / matrix.shape[0]
 
 
-def display_generated_images(
+def display_images(
     images, n=10, size=(20, 3), cmap="gray_r", as_type="float32"
 ):
     if images.max() > 1.0:  # normalizing the data

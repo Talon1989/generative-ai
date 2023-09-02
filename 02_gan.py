@@ -11,7 +11,7 @@ from GanModels import WganDiscriminator
 from GanModels import WGAN_GP
 from GanModels import CGANGenerator
 from GanModels import CGANDiscriminator
-from utilities import display_generated_images
+from utilities import display_images
 
 
 Z_DIM = 128
@@ -120,7 +120,7 @@ class ImageGenerator(keras.callbacks.Callback):
                 tf.random.normal(shape=[self.n_img, self.latent_dim])
             )
             gen_img = (gen_img * 127.5) + 127.5
-            display_generated_images(images=gen_img.numpy(), n=self.n_img)
+            display_images(images=gen_img.numpy(), n=self.n_img)
 
 
 # FITTING
@@ -136,4 +136,4 @@ wgan.discriminator.save('./data/gan_models/wgan_discriminator')
 model = keras.models.load_model('./data/gan_models/wgan_generator')
 z_sample = np.random.normal(loc=0., scale=1., size=[10, Z_DIM])
 imgs = model.predict(z_sample)
-display_generated_images(imgs)
+display_images(imgs)
