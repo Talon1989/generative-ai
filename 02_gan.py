@@ -101,7 +101,7 @@ wgan_checkpoint_callback = keras.callbacks.ModelCheckpoint(
     filepath="./data/wgan_checkpoint.ckpt",
     save_weights_only=True,
     save_freq='epoch',
-    verbose=0,
+    verbose=1,
 )
 wgan_tensorboard_callback = keras.callbacks.TensorBoard(log_dir="./data/logs")
 

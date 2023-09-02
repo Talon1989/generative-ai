@@ -154,7 +154,9 @@ class WganDiscriminator(Discriminator):
     def __init__(self, image_size=(64, 64, 1)):
         super().__init__(image_size)
         #  range of wgan discriminator is [-inf, +inf] (then bounded by L-constraint)
-        self.layer_5 = keras.layers.Conv2D(1, kernel_size=[4, 4], strides=1, padding='valid', use_bias=False, activation='linear')
+        self.layer_5 = keras.layers.Conv2D(
+            1, kernel_size=[4, 4], strides=1, padding='valid', use_bias=False, activation='linear'
+        )
 
     #  batch normalization shouldn't be used on WGAN discriminator since it creates correlation
     #  between images in the same batch, which makes the gradient penalty loss less effective
