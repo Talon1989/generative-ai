@@ -111,7 +111,7 @@ class TextGenerator(keras.callbacks.Callback):
     def __init__(self, index_to_word: list):
         super(TextGenerator, self).__init__()
         self.index_to_word = index_to_word[:]
-        self.word_to_index = {
+        self.word_to_index = {  # inverse word vocabulary (word -> token)
             word: index for index, word in enumerate(self.index_to_word)
         }
 
@@ -121,6 +121,7 @@ class TextGenerator(keras.callbacks.Callback):
         return np.random.choice(len(probs), p=probs), probs
 
     def generate(self, start_prompt, max_tokens, temperature):
+        # words are first converted to tokens, then fed to beginning of generation
         start_tokens = [
             self.word_to_index.get(x, 1) for x in start_prompt.split()
         ]
@@ -128,10 +129,12 @@ class TextGenerator(keras.callbacks.Callback):
         info = []
         while len(start_tokens) < max_tokens and sample_token != 0:
             x = np.array([start_tokens])
+            # outputs probas of each word (tokenized) of being the next word
             y = self.model.predict(x, verbose=0)
+            # probas are passed through the sampler to sample the next word
             sample_token, probs = self.sample_from(y[0][-1], temperature)
             info.append({"prompt": start_prompt, "word_probs": probs})
-            start_tokens.append(sample_token)
+            start_tokens.append(sample_token)  # append next word for next iteration
             start_prompt = start_prompt + " " + self.index_to_word[sample_token]
         print(f"\ngenerated text:\n{start_prompt}\n")
         return info
