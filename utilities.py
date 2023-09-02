@@ -17,16 +17,18 @@ def correlation_matrix(matrix: np.array):
     return relation_matrix / matrix.shape[0]
 
 
-def display_generated_images(images, n=10, size=(20, 3), cmap='gray_r', as_type='float32'):
-    if images.max() > 1.:  # normalizing the data
-        images = images / 255.
-    elif images.min() < 0.:
-        images = (images + 1.) / 2.
+def display_generated_images(
+    images, n=10, size=(20, 3), cmap="gray_r", as_type="float32"
+):
+    if images.max() > 1.0:  # normalizing the data
+        images = images / 255.0
+    elif images.min() < 0.0:
+        images = (images + 1.0) / 2.0
     plt.figure(figsize=size)  # plotting
     for i in range(n):
-        _ = plt.subplot(1, n, i+1)
+        _ = plt.subplot(1, n, i + 1)
         plt.imshow(images[i].astype(as_type), cmap=cmap)
-        plt.axis('off')
+        plt.axis("off")
     plt.show()
     plt.clf()
 
