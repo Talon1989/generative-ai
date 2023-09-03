@@ -3,7 +3,7 @@ import re
 import string
 import numpy as np
 import tensorflow as tf
-
+import tensorflow_probability as tfp
 keras = tf.keras
 import pandas as pd
 from utilities import *
@@ -108,7 +108,7 @@ def build_pixelcnn():
     output = keras.layers.Conv2D(
         filters=4, kernel_size=[1, 1], strides=1, activation='softmax'
     )(x)
-    pixel_cnn = keras.models.Model([inputs, output])
+    pixel_cnn = keras.models.Model(inputs, output)
     return pixel_cnn
 
 
@@ -158,9 +158,9 @@ img_gen_callback = ImageGenerator(n_img=2)
 # FIT THE MODEL
 
 
-
-
-
+# pixelcnn.fit(
+#     input_data, output_data, batch_size=2**7, epochs=100
+# )
 
 
 
