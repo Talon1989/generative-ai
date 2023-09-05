@@ -22,7 +22,7 @@ N_EPOCHS = 5
 
 
 train_data = keras.utils.image_dataset_from_directory(
-    '../global_data/lego-brick-images/dataset/',
+    '/home/talon/datasets/lego-brick-images',
     labels=None,
     color_mode='grayscale',  # 1 channel
     image_size=[64, 64],
