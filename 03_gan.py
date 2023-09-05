@@ -15,13 +15,13 @@ Z_DIM = 2**6
 
 
 #  LABEL READING
-attributes = pd.read_csv("../global_data/CelebA/list_attr_celeba.csv")
+attributes = pd.read_csv("/home/talon/datasets/celeba/list_attr_celeba.csv")
 # print(attributes.columns)
 # attributes.head()
 labels = attributes['Blond_Hair'].to_list()
 int_labels = [x if x == 1 else 0 for x in labels]
 train_data = keras.utils.image_dataset_from_directory(
-    '../global_data/CelebA/img_align_celeba',
+    '/home/talon/datasets/celeba/img_align_celeba',
     labels=int_labels,
     color_mode='rgb',  # 3 channels
     image_size=[64, 64],
