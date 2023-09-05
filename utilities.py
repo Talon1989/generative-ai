@@ -3,7 +3,6 @@ import numpy as np
 import tensorflow as tf
 keras = tf.keras
 
-
 def covariance_matrix(matrix: np.array):
     mean_vector = np.mean(matrix, axis=0)
     mean_matrix = np.subtract(matrix, mean_vector)
@@ -54,5 +53,5 @@ def tokenize_and_prep(text_data: list):
     # vectorize_layer.adapt(text_ds)
 
 
-
+# test commit on linux
 
