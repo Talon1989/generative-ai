@@ -55,6 +55,6 @@ def tokenize_and_prep(text_data: list):
 
 def plot_2D(x, y):
     assert len(x) == len(y)
-    plt.scatter(x, y)
+    plt.scatter(x, y, s=1)
     plt.show()
     plt.clf()

@@ -105,34 +105,9 @@ class Coupling(models.Model):
         return [s, t]
 
 
-class SimpleCoupling(models.Model):
-
-    def __init__(self, input_dim=2):
-        super(SimpleCoupling, self).__init__()
-        # Scale Layers
-        self.s_layer_1 = layers.Dense(
-            units=256, activation='relu', name='s_1',
-            kernel_regularizer=regularizers.l2(1 / 100))
-        self.s_layer_2 = layers.Dense(units=input_dim, activation='tanh', name='s_2',
-                                 kernel_regularizer=regularizers.l2(1 / 100))
-        # Translation Layers
-        self.t_layer_1 = layers.Dense(
-            units=256, activation='relu', name='t_1',
-            kernel_regularizer=regularizers.l2(1 / 100))
-        self.t_layer_2 = layers.Dense(units=input_dim, activation='linear', name='t_2',
-                                 kernel_regularizer=regularizers.l2(1 / 100))
-
-    def call(self, inputs, training=None, mask=None):
-        s = self.s_layer_1(inputs, training=training)
-        s = self.s_layer_2(s, training=training)
-        t = self.t_layer_1(inputs, training=training)
-        t = self.t_layer_2(t, training=training)
-        return [s, t]
-
-
 couple = Coupling()
 couple.build(input_shape=(None, 2))
-print(couple.summary())  # ( (2+1)*256 + (256+1)*256*3 + (256+1)*2) * 2
+print(couple.summary())  # ( (2+1)*256 + (256+1)*256*3 + (256+1)*2) * 2  =  397_316
 
 
 class RealNVP(models.Model):
@@ -202,10 +177,10 @@ class RealNVP(models.Model):
 
 model = RealNVP(input_dim=2, coupling_layers=6)
 model.compile(optimizer=keras.optimizers.Adam(learning_rate=1/10_000))
-# model.fit(
-#     norm_data, batch_size=256, epochs=300
-# )
-
+model.fit(
+    norm_data, batch_size=256, epochs=300
+)
+model.save('data/models/realNVP_00')
 
 
 
