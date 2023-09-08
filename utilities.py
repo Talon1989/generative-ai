@@ -53,5 +53,8 @@ def tokenize_and_prep(text_data: list):
     # vectorize_layer.adapt(text_ds)
 
 
-# test commit on linux
-
+def plot_2D(x, y):
+    assert len(x) == len(y)
+    plt.scatter(x, y)
+    plt.show()
+    plt.clf()
