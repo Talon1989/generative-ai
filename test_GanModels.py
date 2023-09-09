@@ -40,7 +40,6 @@ class TestGanModels(TestCase):
     def test_cgan_generator_output(self):
         batch_size = 32
         latent_vector = tf.random.normal(shape=[batch_size, self.g_latent_dim], mean=0., stddev=1.)
-        # latent_label = tf.random.normal(shape=[batch_size, self.g_label_dim], mean=0., stddev=1.)
         labels = np.random.binomial(n=self.g_label_dim - 1, p=1/2, size=batch_size)
         one_hot_labels = tf.one_hot(labels, depth=self.g_label_dim)
         output = self.cgan_generator([latent_vector, one_hot_labels])
