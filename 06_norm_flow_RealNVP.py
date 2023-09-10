@@ -263,6 +263,7 @@ if not os.path.exists(PATH):
     )
     model.save('data/models/realNVP_00')
 else:
+    # need to call custom_objects argument to use from_config method
     model = keras.models.load_model(PATH, custom_objects={'RealNVP': RealNVP})
 
 img_generator = ImageGenerator(n_samples=3_000, data=norm_data)
