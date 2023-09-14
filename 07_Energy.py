@@ -71,8 +71,24 @@ class EnergyBasedModel(keras.models.Model):
 # model_2 = build_energy_function_network()
 
 
-model = EnergyBasedModel()
-model.build(input_shape=(None, 32, 32, 1))
+model_ = EnergyBasedModel()
+model_.build(input_shape=(None, 32, 32, 1))
+
+
+def generate_samples(model: EnergyBasedModel, inp_imgs, n_steps, step_size, noise=1/200):
+    imgs_per_step = []
+    for _ in range(n_steps):
+        # noise em up
+        inp_imgs += tf.random.normal(inp_imgs.shape, mean=0, stddev=noise)
+        inp_imgs = tf.clip_by_value(inp_imgs, clip_value_min=-1., clip_value_max=+1.)
+        with tf.GradientTape() as tape:
+            tape.watch(inp_imgs)
+            score = model(inp_imgs)
+        grads = - tape.gradient(score, inp_imgs)
+        grads = tf.clip_by_value(grads, -0.03, +0.03)  # let's not move too much
+        inp_imgs += -step_size * grads
+        inp_imgs = tf.clip_by_value(inp_imgs, -1., +1.)
+        return inp_imgs
 
 
 
