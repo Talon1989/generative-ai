@@ -192,13 +192,12 @@ class EBM(keras.models.Model):
         real_images = tf.clip_by_value(data, -1.0, 1.0)
         fake_images = self.buffer.sample_new_examples(n_steps=60, step_size=10)
         inp_images = tf.concat([real_images, fake_images], axis=0)
-        with tf.GradientTape() as tape:
+        with (tf.GradientTape() as tape):
             # real and fake scores
             real_out, fake_out = tf.split(self.model(inp_images), 2, axis=0)
             # contrastive divergence loss
-            cdiv_loss = tf.reduce_mean(fake_out, axis=0) - tf.reduce_mean(
-                real_out, axis=0
-            )
+            cdiv_loss = tf.reduce_mean(fake_out, axis=0) \
+                        - tf.reduce_mean(real_out, axis=0)
             # regularization loss
             reg_loss = self.alpha * tf.reduce_mean(
                 real_out**2 + fake_out**2, axis=0
