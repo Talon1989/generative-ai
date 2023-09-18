@@ -12,6 +12,7 @@ import pytorch_lightning as pl
 import torchvision
 import urllib.request
 from urllib.error import HTTPError
+import time
 
 
 """
@@ -124,11 +125,11 @@ class Sampler:
         fake_images = torch.rand(size=(n_new, ) + self.img_shape) * 2 - 1
 
         # Uniformly choose (self.sample_size - n_new) elements from self.examples
-        samples = random.choices(self.examples, k=self.sample_size - n_new),
+        samples = random.choices(self.examples, k=self.sample_size - n_new)
         # Stacks the samples
         old_images = torch.cat(tensors=samples, dim=0)
         inp_images = (torch.cat(tensors=[fake_images, old_images], dim=0)
-                      .deatch().to(device))
+                      .detach().to(device))
 
         # Perform MCMC sampling
         inp_images = Sampler.generate_samples(
@@ -137,7 +138,7 @@ class Sampler:
 
         # Add new images to the buffer and remove old ones if needed
         self.examples = list(
-            inp_images.to(torch.device("cpu")).chunck(self.sample_size, dim=0)
+            inp_images.to(torch.device("cpu")).chunk(self.sample_size, dim=0)
         ) + self.examples
         self.examples = self.examples[:self.max_len]
         return inp_images
@@ -178,6 +179,7 @@ class Sampler:
             out_images.sum().backward()
             inp_images.grad.data.clamp_(min=-0.03, max=0.03)  # stabilize gradient
             # 3) Apply gradients to current samples
+            # CONSIDER REMOVING NEGATIVE AND USE real_out.mean() - fake_out.mean() LATER
             inp_images.data.add_(step_size * - inp_images.grad.data)
             inp_images.grad.detach_()
             inp_images.grad.zero_()
@@ -202,32 +204,175 @@ class Sampler:
 # TRAINING ALGORITHM
 
 
+class DeepEnergyModel(pl.LightningModule):
+
+    def __init__(self, img_shape, batch_size, alpha=1/10, lr=1/10_000, beta1=0., **CNN_args):
+        super().__init__()
+        self.save_hyperparameters()  # automatically sets arguments in __init__
+        self.cnn = CNNModel(**CNN_args)
+        self.sampler = Sampler(self.cnn, img_shape, batch_size)
+
+    def forward(self, x):
+        return self.cnn(x)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(
+            self.parameters(), lr=self.hparams.lr, betas=(self.hparams.beta1, 999/1_000)
+        )
+        # every (step_size) epochs lr of (optimizer) is * (gamma) to be decreased
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer=optimizer, step_size=1, gamma=97/100
+        )
+        return [optimizer], [scheduler]
+
+    def training_step(self, batch, batch_idx):
+
+        # add some noise to og images to prevent model to focus only on 'clean' inputs
+        real_images, _ = batch
+        small_noise = torch.randn_like(real_images) * 0.005
+        real_images.add_(small_noise).clamp_(min=-1., max=1.)  # func_ is in place
+
+        fake_images = self.sampler.sample_new_examples(steps=60, step_size=10)
+
+        # predict energy scores
+        inp_images = torch.cat([real_images, fake_images], dim=0)
+        real_out, fake_out = self.cnn(inp_images).chunk(2, dim=0)
+
+        # calculate losses
+        regularized_loss = self.hparams.alpha * (real_out**2 + fake_out**2).mean()
+        contrastive_divergence_loss = fake_out.mean() - real_out.mean()
+        loss = regularized_loss + contrastive_divergence_loss
+
+        self.log('loss', loss)
+        self.log('loss_regularization', regularized_loss)
+        self.log('loss_contrastive_divergence', contrastive_divergence_loss)
+        self.log('metrics_avg_real', real_out.mean())
+        self.log('metrics_avg_fake', fake_out.mean())
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        """
+        For validating, we calculate the contrastive divergence
+        between purely random images and unseen examples
+        """
+        real_images, _ = batch
+        fake_images = torch.randn_like(real_images) * 2 - 1
+        inp_images = torch.cat([real_images, fake_images], dim=0)
+        real_out, fake_out = self.cnn(inp_images).chunk(2, dim=0)
+        contrastive_divergence = fake_out.mean() - real_out.mean()
+        self.log('val_contrastive_divergence', contrastive_divergence)
+        self.log('val_fake_out', fake_out.mean())
+        self.log('val_real_out', real_out.mean())
 
 
+class GenerateCallback(pl.Callback):
+
+    def __init__(self, batch_size=8, vis_steps=8, n_steps=2**8, every_n_epochs=5):
+        super().__init__()
+        self.batch_size = batch_size  # # images to generate
+        self.vis_steps = vis_steps  # # steps withing generation to visualize
+        self.n_steps = n_steps  # # steps to take during generation
+        self.every_n_epochs = every_n_epochs  # save images every n epochs
+
+    def on_epoch_end(self, trainer, pl_module):
+        if trainer.current_epoch % self.every_n_epochs == 0:
+            images_per_step = self.generate_images(pl_module)
+            for i in range(images_per_step.shape[1]):
+                step_size = self.n_steps // self.vis_steps
+                images_to_plot = images_per_step[step_size-1::step_size, i]
+                grid = torchvision.utils.make_grid(
+                    images_to_plot,
+                    nrow=images_to_plot.shape[0],
+                    normalize=True,
+                    range=(-1, 1)
+                )
+                trainer.logger.experiment.add_image(
+                    'generation_%d' % i,grid, global_step=trainer.current_epoch)
+
+    def generate_images(self, pl_module):
+        pl_module.eval()
+        start_images = torch.rand(
+            (self.batch_size,) + pl_module.hparams['img_shape']
+        ).to(pl_module.device)
+        start_images = start_images * 2 - 1
+        torch.set_grad_enabled(True)
+        images_per_step = Sampler.generate_samples(
+            pl_module.cnn, start_images,steps=self.n_steps,
+            step_size=10, return_img_per_step=True
+        )
+        torch.set_grad_enabled(False)
+        pl_module.train()
+        return images_per_step
 
 
+class SamplerCallback(pl.Callback):
+
+    def __init__(self, n_images=32, every_n_epochs=5):
+        super().__init__()
+        self.n_images = n_images
+        self.every_n_epochs = every_n_epochs
+
+    def on_epoch_end(self, trainer, pl_module):
+        if trainer.current_epoch % self.every_n_epochs == 0:
+            example_images = torch.cat(
+                random.choices(pl_module.sampler.examples, k=self.n_images),
+                dim=0
+            )
+            grid = torchvision.utils.make_grid(
+                example_images, nrow=4, normalize=True, range=(-1, 1))
+            trainer.logger.experiment.add_image(
+                'sampler', grid, global_step=trainer.current_epoch)
 
 
+class OutlierCallback(pl.Callback):
+
+    def __init__(self, batch_size=2**10):
+        super().__init__()
+        self.batch_size = batch_size
+
+    def on_epoch_end(self, trainer, pl_module):
+        with torch.no_grad():
+            pl_module.eval()
+            random_images = torch.rand(
+                (self.batch_size, ) + pl_module.hparams['img_shape']
+            ).to(pl_module.device)
+            random_images = random_images * 2 - 1
+            random_out = pl_module.cnn(random_images).mean()
+            pl_module.train()
+        trainer.logger.experiment.add_scalar(
+            'random_out', random_out, global_step=trainer.current_epoch)
 
 
+PATH = '/home/talon/PycharmProjects/generative-ai/data/torch-energy/MNIST'
 
 
+def train_model(**kwargs):
+    trainer = pl.Trainer(
+        accelerator='gpu' if str(device).startswith('cuda') else 'cpu',
+        devices=1,
+        gradient_clip_val=0.1,
+        default_root_dir=PATH,
+        callbacks=[
+            pl.callbacks.ModelCheckpoint(
+                save_weights_only=True, mode='min', monitor='val_contrastive_divergence'),
+            pl.callbacks.LearningRateMonitor('epoch'),
+            GenerateCallback(every_n_epochs=5),
+            SamplerCallback(every_n_epochs=5),
+            OutlierCallback()
+        ]
+    )
+    pl.seed_everything(42)
+    model = DeepEnergyModel(**kwargs)
+    trainer.fit(
+        model=model,
+        train_dataloaders=train_loader,
+        val_dataloaders=test_loader
+    )
+    model = DeepEnergyModel.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
+    return model
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+train_model(img_shape=(1, 28, 28), batch_size=train_loader.batch_size)
 
 
 
