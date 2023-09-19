@@ -34,6 +34,32 @@ def display_images(
     plt.clf()
 
 
+def plot_line(values: np.array, name: str):
+    plt.plot(np.arange(values.shape[0]), values, c='b')
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.title(name)
+    plt.show()
+    plt.clf()
+
+
+def plot_lines(values: np.array, names):
+    try:
+        values.shape[1]
+    except IndexError:
+        print('data is not in the correct format')
+        return
+    colors = ['b', 'r', 'g', 'k']
+    for i in range(values.shape[0]):
+        plt.plot(np.arange(values.shape[1]), values[i],
+                 c=colors[i % values.shape[0]], label=names[i])
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.legend(loc='best')
+    plt.show()
+    plt.clf()
+
+
 def tokenize_and_prep(text_data: list):
 
     def prep_inputs(text):
