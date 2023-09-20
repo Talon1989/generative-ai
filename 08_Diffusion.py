@@ -11,6 +11,7 @@ from custom_layers import (ResidualBlock, UpBlock, DownBlock)
 
 PATH = '/home/talon/datasets/flower-dataset/dataset'
 EMA = 999/1_000
+NOISE_EMBEDDING_SIZE = 32
 
 
 train_data = keras.utils.image_dataset_from_directory(
@@ -58,7 +59,8 @@ def offset_cosine_diffusion_schedule(diffusion_times):
 
 
 T = 1_000
-diff_times = [x/T for x in range(T)]
+# diff_times = [x/T for x in range(T)]
+diff_times = tf.convert_to_tensor([x / T for x in range(T)])
 linear_noise_rates, linear_signal_rates = linear_diffusion_schedule(diff_times)
 
 
@@ -70,6 +72,7 @@ class DiffusionModel(keras.models.Model):
         self.network = model
         self.ema_network = keras.models.clone_model(self.network)
         self.diffusion_schedule = diff_schedule
+        self.noise_loss_tracker = keras.metrics.Mean(name="n_loss")
 
     @property
     def metrics(self):
@@ -110,7 +113,7 @@ class DiffusionModel(keras.models.Model):
             noise_loss = self.loss(noises, pred_noises)  # MSE
         grads = tape.gradient(noise_loss, self.network.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.network.trainable_variables))
-        self.noise_loss_tracker.update(noise_loss)
+        self.noise_loss_tracker.update_state(noise_loss)
 
         # EMA (soft) update
         for weight, ema_weight in zip(
@@ -118,33 +121,247 @@ class DiffusionModel(keras.models.Model):
         ):
             ema_weight.assign(EMA * ema_weight + (1 - EMA) * weight)
 
-        return {m.name: m.resut() for m in self.metrics}
+        return {m.name: m.result() for m in self.metrics}
+
+    def reverse_diffusion(self, initial_noise, diffusion_steps):
+        n_images = initial_noise.shape[0]
+        step_size = 1. / diffusion_steps
+        current_images = initial_noise
+        pred_images = None
+        for step in range(diffusion_steps):
+            # set all diffusion times to1 (start of reverse diffusion process)
+            diffusion_times = tf.ones(shape=(n_images, 1, 1, 1)) - step * step_size
+            # noise and signal rates are calculated according to the diffusion schedule
+            noise_rates, signal_rates = self.diffusion_schedule(diffusion_times)
+            pred_noises, pred_images = self.denoise(
+                current_images, noise_rates, signal_rates, training=False
+            )  # unet predicts the noise and returns the denoised image estimate (step 1)
+            # reduce diffusion times by one step
+            next_diffusion_times = diffusion_times - step_size
+            next_noise_rates, next_signal_rates = self.diffusion_schedule(
+                next_diffusion_times
+            )  # next noise and signal rates are calculated
+            current_images = (
+                next_signal_rates * pred_images + next_noise_rates * pred_noises
+            )  # t-1 images are calculated (step 2)
+        return pred_images
 
 
+def sinusoidal_embedding(x):
+    frequencies = tf.exp(
+        tf.linspace(
+            tf.math.log(1.0),  # start
+            tf.math.log(1000.0),  # end
+            NOISE_EMBEDDING_SIZE // 2,  # number of elements (dimensions)
+        )
+    )
+    angular_speeds = 2.0 * math.pi * frequencies
+    embeddings = tf.concat(
+        [tf.sin(angular_speeds * x), tf.cos(angular_speeds * x)], axis=3
+    )
+    return embeddings
 
 
+def make_unet():
+
+    def ResidualBlock(width):
+        def apply(x):
+            input_width = x.shape[3]
+            if input_width == width:
+                residual = x
+            else:
+                residual = keras.layers.Conv2D(width, kernel_size=[1, 1])(x)
+            x = keras.layers.BatchNormalization(center=False, scale=False)(x)
+            x = keras.layers.Conv2D(
+                width, kernel_size=[3, 3], padding="same", activation=keras.activations.swish
+            )(x)
+            x = keras.layers.Conv2D(width, kernel_size=[3, 3], padding="same")(x)
+            x = keras.layers.Add()([x, residual])
+            return x
+
+        return apply
+
+    def DownBlock(width, block_depth):
+        def apply(x):
+            x, skips = x
+            print(len(skips))
+            for _ in range(block_depth):
+                x = ResidualBlock(width)(x)
+                skips.append(x)
+            x = keras.layers.AveragePooling2D(pool_size=2)(x)
+            return x
+
+        return apply
+
+    def UpBlock(width, block_depth):
+        def apply(x):
+            x, skips = x
+            x = keras.layers.UpSampling2D(size=[2, 2], interpolation="bilinear")(x)
+            for _ in range(block_depth):
+                x = keras.layers.Concatenate()([x, skips.pop()])
+                x = ResidualBlock(width)(x)
+            return x
+
+        return apply
+
+    # image we wish to denoise
+    noisy_images = keras.layers.Input(shape=[64, 64, 3])
+    x = keras.layers.Conv2D(32, kernel_size=[1, 1])(noisy_images)
+
+    # noise variance
+    noise_variance = keras.layers.Input(shape=[1, 1, 1])
+    noise_embedding = keras.layers.Lambda(sinusoidal_embedding)(noise_variance)
+    noise_embedding = keras.layers.UpSampling2D(
+        size=[64, 64], interpolation='nearest')(noise_embedding)
+
+    x = keras.layers.Concatenate()([x, noise_embedding])
+
+    # skips list hold the output from DownBlock layers
+    # that we wish to connect to UpBlock layers downstream
+    skips = []
+
+    x = DownBlock(width=32, block_depth=2)([x, skips])
+    x = DownBlock(width=64, block_depth=2)([x, skips])
+    x = DownBlock(width=96, block_depth=2)([x, skips])
+
+    x = ResidualBlock(width=128)(x)
+    x = ResidualBlock(width=128)(x)
+
+    x = UpBlock(width=96, block_depth=2)([x, skips])
+    x = UpBlock(width=64, block_depth=2)([x, skips])
+    x = UpBlock(width=32, block_depth=2)([x, skips])
+
+    x = keras.layers.Conv2D(
+        filters=3, kernel_size=[1, 1], kernel_initializer='zeros')(x)
+
+    unet = keras.models.Model(
+        [noisy_images, noise_variance], x, name='unet'
+    )
+
+    return unet
 
 
+def make_unet_class_inheritance():
+
+    # image we wish to denoise
+    noisy_images = keras.layers.Input(shape=[64, 64, 3])
+    x = keras.layers.Conv2D(32, kernel_size=[1, 1])(noisy_images)
+
+    # noise variance
+    noise_variance = keras.layers.Input(shape=[1, 1, 1])
+    noise_embedding = keras.layers.Lambda(sinusoidal_embedding)(noise_variance)
+    noise_embedding = keras.layers.UpSampling2D(
+        size=[64, 64], interpolation='nearest')(noise_embedding)
+
+    x = keras.layers.Concatenate()([x, noise_embedding])
+
+    # skips list hold the output from DownBlock layers
+    # that we wish to connect to UpBlock layers downstream
+    skips = []
+
+    x, skips = DownBlock(width=32, block_depth=2)([x, skips])
+    x, skips = DownBlock(width=64, block_depth=2)([x, skips])
+    x, skips = DownBlock(width=96, block_depth=2)([x, skips])
+
+    x = ResidualBlock(width=128)(x)
+    x = ResidualBlock(width=128)(x)
+
+    x, skips = UpBlock(width=96, block_depth=2)([x, skips])
+    x, skips = UpBlock(width=64, block_depth=2)([x, skips])
+    x, skips = UpBlock(width=32, block_depth=2)([x, skips])
+
+    x = keras.layers.Conv2D(
+        filters=3, kernel_size=[1, 1], kernel_initializer='zeros')(x)
+
+    unet = keras.models.Model(
+        [noisy_images, noise_variance], x, name='unet'
+    )
+
+    return unet
 
 
+class UNET(keras.models.Model):
+
+    def __init__(self):
+
+        super().__init__()
+
+        self.image_conv = keras.layers.Conv2D(
+            32, kernel_size=[1, 1], input_shape=[None, 64, 64, 3])
+        self.noise_embedding = keras.layers.Lambda(
+            sinusoidal_embedding, input_shape=[None, 1, 1, 1])
+        self.noise_upsampling = keras.layers.UpSampling2D(
+            size=[64, 64], interpolation='nearest')
+        self.skips = []
+        self.down_block_1 = DownBlock(width=32, block_depth=2)
+        self.down_block_2 = DownBlock(width=64, block_depth=2)
+        self.down_block_3 = DownBlock(width=96, block_depth=2)
+        self.concat = keras.layers.Concatenate()
+        self.residual_block_1 = ResidualBlock(width=128)
+        self.residual_block_2 = ResidualBlock(width=128)
+        self.up_block_1 = UpBlock(width=96, block_depth=2)
+        self.up_block_2 = UpBlock(width=64, block_depth=2)
+        self.up_block_3 = UpBlock(width=32, block_depth=2)
+        self.out_conv = keras.layers.Conv2D(
+            filters=3, kernel_size=[1, 1], kernel_initializer='zeros')
+
+    def call(self, inputs, training=None, mask=None):
+
+        noisy_images, noise_variance = inputs
+
+        noisy_images = self.image_conv(noisy_images, training=training)
+        noise_variance = self.noise_embedding(noise_variance)
+        noise_variance = self.noise_upsampling(noise_variance)
+
+        x = self.concat([noisy_images, noise_variance])
+        skips = []
+
+        # x, self.skips = self.down_block_1([x, self.skips], training=training)
+        # x, self.skips = self.down_block_2([x, self.skips], training=training)
+        # x, self.skips = self.down_block_3([x, self.skips], training=training)
+        x, skips = self.down_block_1([x, skips], training=training)
+        x, skips = self.down_block_2([x, skips], training=training)
+        x, skips = self.down_block_3([x, skips], training=training)
+
+        x = self.residual_block_1(x)
+        x = self.residual_block_2(x)
+
+        x, skips = self.up_block_1([x, skips], training=training)
+        x, skips = self.up_block_2([x, skips], training=training)
+        x, _ = self.up_block_3([x, skips], training=training)
+
+        x = self.out_conv(x)
+
+        return x
 
 
+# unet = make_unet_class_inheritance()
+unet = UNET()
+unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
 
 
+# # Example input tensor of shape (1, 2, 2, 1)
+# x = tf.constant(
+#     [
+#         [
+#             [[1.0], [2.0]],
+#             [[3.0], [4.0]]
+#         ]
+#     ]
+# )
+# output = sinusoidal_embedding(x)
+# print(output)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+model = DiffusionModel(model=unet, diff_schedule=cosine_diffusion_schedule)
+model.compile(
+    optimizer=keras.optimizers.experimental.AdamW(
+        learning_rate=1e-3, weight_decay=1e-4
+    ),
+    loss=keras.losses.mean_absolute_error
+)
+model.normalizer.adapt(train)
+model.fit(train, epochs=50)
 
 
 
