@@ -70,7 +70,8 @@ class DownBlock(keras.layers.Layer):
         self.down_sample = keras.layers.AveragePooling2D(pool_size=[2, 2])
 
     def call(self, x):
-        x, skips = x
+        x, skips_ = x
+        skips = skips_.copy()
         for block in self.residual_blocks:
             x = block(x)  # increase number of channels in the image
             skips.append(x)  # and save it to a list for later use by UpBlock
@@ -88,7 +89,8 @@ class UpBlock(keras.layers.Layer):
         self.residual_blocks = [ResidualBlock(width=width) for _ in range(block_depth)]
 
     def call(self, x):
-        x, skips = x
+        x, skips_ = x
+        skips = skips_.copy()
         x = self.up_sample(x)  # double size of the image
         for block in self.residual_blocks:
             x = self.concat([x, skips.pop()])  # get DownBlock list and concat it to current output

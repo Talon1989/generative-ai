@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 from call_me import SaveModel
+from call_me import DiffusionSaveModel
 keras = tf.keras
 from utilities import *
 from custom_layers import (ResidualBlock, UpBlock, DownBlock)
@@ -73,6 +74,10 @@ class DiffusionModel(keras.models.Model):
         self.ema_network = keras.models.clone_model(self.network)
         self.diffusion_schedule = diff_schedule
         self.noise_loss_tracker = keras.metrics.Mean(name="n_loss")
+
+    # def call(self, inputs, training=False):
+    #     # Dummy call method. It just returns the inputs without any computation.
+    #     return inputs
 
     @property
     def metrics(self):
@@ -145,6 +150,15 @@ class DiffusionModel(keras.models.Model):
                 next_signal_rates * pred_images + next_noise_rates * pred_noises
             )  # t-1 images are calculated (step 2)
         return pred_images
+
+    def denormalize(self, images):
+        images = self.normalizer.mean + images * self.normalizer.variance ** 1/2
+        return tf.clip_by_value(images, clip_value_min=0., clip_value_max=1.)
+
+    def generate(self, n_images, diffusion_steps):
+        initial_noise = tf.random.normal(shape=[n_images, 64, 64, 3])
+        generated_images = self.reverse_diffusion(initial_noise, diffusion_steps)
+        return self.denormalize(generated_images)
 
 
 def sinusoidal_embedding(x):
@@ -316,9 +330,6 @@ class UNET(keras.models.Model):
         x = self.concat([noisy_images, noise_variance])
         skips = []
 
-        # x, self.skips = self.down_block_1([x, self.skips], training=training)
-        # x, self.skips = self.down_block_2([x, self.skips], training=training)
-        # x, self.skips = self.down_block_3([x, self.skips], training=training)
         x, skips = self.down_block_1([x, skips], training=training)
         x, skips = self.down_block_2([x, skips], training=training)
         x, skips = self.down_block_3([x, skips], training=training)
@@ -354,14 +365,17 @@ unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
 
 
 model = DiffusionModel(model=unet, diff_schedule=cosine_diffusion_schedule)
+# model.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
+# save_model_callback = SaveModel(model.network, "data/models/U-Net")
+save_model_callback = DiffusionSaveModel(model, "data/models/U-Net")
 model.compile(
     optimizer=keras.optimizers.experimental.AdamW(
         learning_rate=1e-3, weight_decay=1e-4
     ),
-    loss=keras.losses.mean_absolute_error
+    loss=keras.losses.mean_absolute_error,
 )
 model.normalizer.adapt(train)
-model.fit(train, epochs=50)
+model.fit(train, epochs=50, callbacks=[save_model_callback], steps_per_epoch=2)
 
 
 
