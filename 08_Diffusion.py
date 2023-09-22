@@ -5,25 +5,32 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from call_me import SaveModel
 from call_me import DiffusionSaveModel
+import warnings
 keras = tf.keras
 from utilities import *
-from custom_layers import (ResidualBlock, UpBlock, DownBlock)
+from custom_layers import ResidualBlock, UpBlock, DownBlock
+# warnings.filterwarnings('ignore')
 
 
-PATH = '/home/talon/datasets/flower-dataset/dataset'
-EMA = 999/1_000
+PATH = "/home/talon/datasets/flower-dataset/dataset"
+EMA = 999 / 1_000
 NOISE_EMBEDDING_SIZE = 32
 
 
 train_data = keras.utils.image_dataset_from_directory(
-    directory=PATH, labels=None, image_size=[64, 64],
-    batch_size=None, shuffle=True, seed=42, interpolation='bilinear'
+    directory=PATH,
+    labels=None,
+    image_size=[64, 64],
+    batch_size=None,
+    shuffle=True,
+    seed=42,
+    interpolation="bilinear",
 )
 
 
 # scale to range [0, 1]
 def preprocess(img):
-    return tf.cast(img, 'float32') / 255.
+    return tf.cast(img, "float32") / 255.0
 
 
 train = train_data.map(lambda x: preprocess(x))
@@ -32,8 +39,8 @@ train = train.batch(2**6, drop_remainder=True)
 
 
 def linear_diffusion_schedule(diffusion_times):
-    min_rate = 1/10_000
-    max_rate = 1/50
+    min_rate = 1 / 10_000
+    max_rate = 1 / 50
     betas = min_rate + tf.convert_to_tensor(diffusion_times) * (max_rate - min_rate)
     alphas = 1 - betas
     alpha_bars = tf.math.cumprod(alphas)  # cumulative product
@@ -49,8 +56,8 @@ def cosine_diffusion_schedule(diffusion_times):
 
 
 def offset_cosine_diffusion_schedule(diffusion_times):
-    min_signal_rate = 1/50
-    max_signate_rate = 19/20
+    min_signal_rate = 1 / 50
+    max_signate_rate = 19 / 20
     start_angle = tf.acos(max_signate_rate)
     end_angle = tf.acos(min_signal_rate)
     diffusion_angles = start_angle + diffusion_times * (end_angle - start_angle)
@@ -66,7 +73,6 @@ linear_noise_rates, linear_signal_rates = linear_diffusion_schedule(diff_times)
 
 
 class DiffusionModel(keras.models.Model):
-
     def __init__(self, model: keras.models.Model, diff_schedule):
         super().__init__()
         self.normalizer = keras.layers.Normalization()
@@ -88,14 +94,11 @@ class DiffusionModel(keras.models.Model):
             network = self.network
         else:
             network = self.ema_network
-        pred_noises = network(
-            [noisy_images, noise_rates ** 2], training=training
-        )
+        pred_noises = network([noisy_images, noise_rates**2], training=training)
         pred_images = (noisy_images - (noise_rates * pred_noises)) / signal_rates
         return pred_noises, pred_images
 
     def train_step(self, data):
-
         images = data
 
         # normalize batch of images : they have zero mean and unit variance
@@ -105,7 +108,7 @@ class DiffusionModel(keras.models.Model):
         batch_size = tf.shape(images)[0]
 
         diffusion_times = tf.random.uniform(
-            shape=[batch_size, 1, 1, 1], minval=0., maxval=1.
+            shape=[batch_size, 1, 1, 1], minval=0.0, maxval=1.0
         )  # sample random diffusion times
         # and use them to generate noise and signal rates
         noise_rates, signal_rates = self.diffusion_schedule(diffusion_times)
@@ -121,16 +124,14 @@ class DiffusionModel(keras.models.Model):
         self.noise_loss_tracker.update_state(noise_loss)
 
         # EMA (soft) update
-        for weight, ema_weight in zip(
-            self.network.weights, self.ema_network.weights
-        ):
+        for weight, ema_weight in zip(self.network.weights, self.ema_network.weights):
             ema_weight.assign(EMA * ema_weight + (1 - EMA) * weight)
 
         return {m.name: m.result() for m in self.metrics}
 
     def reverse_diffusion(self, initial_noise, diffusion_steps):
         n_images = initial_noise.shape[0]
-        step_size = 1. / diffusion_steps
+        step_size = 1.0 / diffusion_steps
         current_images = initial_noise
         pred_images = None
         for step in range(diffusion_steps):
@@ -152,8 +153,8 @@ class DiffusionModel(keras.models.Model):
         return pred_images
 
     def denormalize(self, images):
-        images = self.normalizer.mean + images * self.normalizer.variance ** 1/2
-        return tf.clip_by_value(images, clip_value_min=0., clip_value_max=1.)
+        images = self.normalizer.mean + images * self.normalizer.variance**1 / 2
+        return tf.clip_by_value(images, clip_value_min=0.0, clip_value_max=1.0)
 
     def generate(self, n_images, diffusion_steps):
         initial_noise = tf.random.normal(shape=[n_images, 64, 64, 3])
@@ -187,7 +188,10 @@ def make_unet():
                 residual = keras.layers.Conv2D(width, kernel_size=[1, 1])(x)
             x = keras.layers.BatchNormalization(center=False, scale=False)(x)
             x = keras.layers.Conv2D(
-                width, kernel_size=[3, 3], padding="same", activation=keras.activations.swish
+                width,
+                kernel_size=[3, 3],
+                padding="same",
+                activation=keras.activations.swish,
             )(x)
             x = keras.layers.Conv2D(width, kernel_size=[3, 3], padding="same")(x)
             x = keras.layers.Add()([x, residual])
@@ -225,8 +229,9 @@ def make_unet():
     # noise variance
     noise_variance = keras.layers.Input(shape=[1, 1, 1])
     noise_embedding = keras.layers.Lambda(sinusoidal_embedding)(noise_variance)
-    noise_embedding = keras.layers.UpSampling2D(
-        size=[64, 64], interpolation='nearest')(noise_embedding)
+    noise_embedding = keras.layers.UpSampling2D(size=[64, 64], interpolation="nearest")(
+        noise_embedding
+    )
 
     x = keras.layers.Concatenate()([x, noise_embedding])
 
@@ -245,18 +250,16 @@ def make_unet():
     x = UpBlock(width=64, block_depth=2)([x, skips])
     x = UpBlock(width=32, block_depth=2)([x, skips])
 
-    x = keras.layers.Conv2D(
-        filters=3, kernel_size=[1, 1], kernel_initializer='zeros')(x)
-
-    unet = keras.models.Model(
-        [noisy_images, noise_variance], x, name='unet'
+    x = keras.layers.Conv2D(filters=3, kernel_size=[1, 1], kernel_initializer="zeros")(
+        x
     )
+
+    unet = keras.models.Model([noisy_images, noise_variance], x, name="unet")
 
     return unet
 
 
 def make_unet_class_inheritance():
-
     # image we wish to denoise
     noisy_images = keras.layers.Input(shape=[64, 64, 3])
     x = keras.layers.Conv2D(32, kernel_size=[1, 1])(noisy_images)
@@ -264,8 +267,9 @@ def make_unet_class_inheritance():
     # noise variance
     noise_variance = keras.layers.Input(shape=[1, 1, 1])
     noise_embedding = keras.layers.Lambda(sinusoidal_embedding)(noise_variance)
-    noise_embedding = keras.layers.UpSampling2D(
-        size=[64, 64], interpolation='nearest')(noise_embedding)
+    noise_embedding = keras.layers.UpSampling2D(size=[64, 64], interpolation="nearest")(
+        noise_embedding
+    )
 
     x = keras.layers.Concatenate()([x, noise_embedding])
 
@@ -284,28 +288,28 @@ def make_unet_class_inheritance():
     x, skips = UpBlock(width=64, block_depth=2)([x, skips])
     x, skips = UpBlock(width=32, block_depth=2)([x, skips])
 
-    x = keras.layers.Conv2D(
-        filters=3, kernel_size=[1, 1], kernel_initializer='zeros')(x)
-
-    unet = keras.models.Model(
-        [noisy_images, noise_variance], x, name='unet'
+    x = keras.layers.Conv2D(filters=3, kernel_size=[1, 1], kernel_initializer="zeros")(
+        x
     )
+
+    unet = keras.models.Model([noisy_images, noise_variance], x, name="unet")
 
     return unet
 
 
 class UNET(keras.models.Model):
-
     def __init__(self):
-
         super().__init__()
 
         self.image_conv = keras.layers.Conv2D(
-            32, kernel_size=[1, 1], input_shape=[None, 64, 64, 3])
+            32, kernel_size=[1, 1], input_shape=[None, 64, 64, 3]
+        )
         self.noise_embedding = keras.layers.Lambda(
-            sinusoidal_embedding, input_shape=[None, 1, 1, 1])
+            sinusoidal_embedding, input_shape=[None, 1, 1, 1]
+        )
         self.noise_upsampling = keras.layers.UpSampling2D(
-            size=[64, 64], interpolation='nearest')
+            size=[64, 64], interpolation="nearest"
+        )
         self.skips = []
         self.down_block_1 = DownBlock(width=32, block_depth=2)
         self.down_block_2 = DownBlock(width=64, block_depth=2)
@@ -317,10 +321,10 @@ class UNET(keras.models.Model):
         self.up_block_2 = UpBlock(width=64, block_depth=2)
         self.up_block_3 = UpBlock(width=32, block_depth=2)
         self.out_conv = keras.layers.Conv2D(
-            filters=3, kernel_size=[1, 1], kernel_initializer='zeros')
+            filters=3, kernel_size=[1, 1], kernel_initializer="zeros"
+        )
 
     def call(self, inputs, training=None, mask=None):
-
         noisy_images, noise_variance = inputs
 
         noisy_images = self.image_conv(noisy_images, training=training)
@@ -375,145 +379,5 @@ model.compile(
     loss=keras.losses.mean_absolute_error,
 )
 model.normalizer.adapt(train)
-model.fit(train, epochs=50, callbacks=[save_model_callback], steps_per_epoch=2)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# tf.get_logger().setLevel('ERROR')
+model.fit(train, epochs=10, callbacks=[save_model_callback], steps_per_epoch=2)
