@@ -68,8 +68,8 @@ def offset_cosine_diffusion_schedule(diffusion_times):
 
 T = 1_000
 # diff_times = [x/T for x in range(T)]
-diff_times = tf.convert_to_tensor([x / T for x in range(T)])
-linear_noise_rates, linear_signal_rates = linear_diffusion_schedule(diff_times)
+# diff_times = tf.convert_to_tensor([x / T for x in range(T)])
+# linear_noise_rates, linear_signal_rates = linear_diffusion_schedule(diff_times)
 
 
 class DiffusionModel(keras.models.Model):
@@ -368,10 +368,23 @@ unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
 # print(output)
 
 
-model = DiffusionModel(model=unet, diff_schedule=cosine_diffusion_schedule)
-# model.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
-# save_model_callback = SaveModel(model.network, "data/models/U-Net")
-save_model_callback = DiffusionSaveModel(model, "data/models/U-Net")
+# model = DiffusionModel(model=unet, diff_schedule=cosine_diffusion_schedule)
+# # save_model_callback = SaveModel(model.network, "data/models/U-Net")
+# save_model_callback = DiffusionSaveModel(model, "data/models/U-Net")
+# model.compile(
+#     optimizer=keras.optimizers.experimental.AdamW(
+#         learning_rate=1e-3, weight_decay=1e-4
+#     ),
+#     loss=keras.losses.mean_absolute_error,
+# )
+# model.normalizer.adapt(train)
+# model.fit(train, epochs=10, callbacks=[save_model_callback])
+
+
+model = DiffusionModel(
+    model=keras.models.load_model('data/models/U-Net'),
+    diff_schedule=cosine_diffusion_schedule
+)
 model.compile(
     optimizer=keras.optimizers.experimental.AdamW(
         learning_rate=1e-3, weight_decay=1e-4
@@ -379,5 +392,3 @@ model.compile(
     loss=keras.losses.mean_absolute_error,
 )
 model.normalizer.adapt(train)
-# tf.get_logger().setLevel('ERROR')
-model.fit(train, epochs=10, callbacks=[save_model_callback], steps_per_epoch=2)

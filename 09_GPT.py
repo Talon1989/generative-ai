@@ -63,6 +63,19 @@ def get_wine():
 text_data, text_ds, vectorize_layer, vocab = get_wine_og()
 
 
+# CREATE TRAINING SET
+def prep_inputs(text, vect_layer):
+    text = tf.expand_dims(text, -1)
+    tokenized_sentence = vect_layer(text)
+    x = tokenized_sentence[:, :-1]
+    y = tokenized_sentence[:, 1:]
+    return x, y
+
+
+train_ds = text_ds.map(lambda x: prep_inputs(x, vectorize_layer))
+
+
+
 
 
 
