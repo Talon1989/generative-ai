@@ -140,3 +140,4 @@ cython_debug/
 
 # data files
 data
+!data/models/U-Net
