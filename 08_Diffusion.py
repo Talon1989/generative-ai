@@ -36,16 +36,22 @@ def preprocess(img):
 train = train_data.map(lambda x: preprocess(x))
 train = train.repeat(5)  # repeat dataset 5 times
 train = train.batch(2**6, drop_remainder=True)
+# for img in train:
+#     print(img.shape)
+#     break
+
+
+# issues
 
 
 def linear_diffusion_schedule(diffusion_times):
-    min_rate = 1 / 10_000
-    max_rate = 1 / 50
-    betas = min_rate + tf.convert_to_tensor(diffusion_times) * (max_rate - min_rate)
+    min_rate = 0.0001
+    max_rate = 0.02
+    betas = min_rate + diffusion_times * (max_rate - min_rate)
     alphas = 1 - betas
-    alpha_bars = tf.math.cumprod(alphas)  # cumulative product
-    signal_rates = alpha_bars
-    noise_rates = 1 - alpha_bars
+    alpha_bars = tf.math.cumprod(alphas)
+    signal_rates = tf.sqrt(alpha_bars)
+    noise_rates = tf.sqrt(1 - alpha_bars)
     return noise_rates, signal_rates
 
 
@@ -135,7 +141,7 @@ class DiffusionModel(keras.models.Model):
         current_images = initial_noise
         pred_images = None
         for step in range(diffusion_steps):
-            # set all diffusion times to1 (start of reverse diffusion process)
+            # set all diffusion times to 1 (start of reverse diffusion process)
             diffusion_times = tf.ones(shape=(n_images, 1, 1, 1)) - step * step_size
             # noise and signal rates are calculated according to the diffusion schedule
             noise_rates, signal_rates = self.diffusion_schedule(diffusion_times)
@@ -351,8 +357,8 @@ class UNET(keras.models.Model):
 
 
 # unet = make_unet_class_inheritance()
-unet = UNET()
-unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
+# unet = UNET()
+# unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
 
 
 # # Example input tensor of shape (1, 2, 2, 1)
@@ -381,14 +387,18 @@ unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
 # model.fit(train, epochs=10, callbacks=[save_model_callback])
 
 
+unet = keras.models.load_model('data/models/U-Net')
+unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
 model = DiffusionModel(
-    model=keras.models.load_model('data/models/U-Net'),
+    model=unet,
     diff_schedule=cosine_diffusion_schedule
 )
 model.compile(
     optimizer=keras.optimizers.experimental.AdamW(
         learning_rate=1e-3, weight_decay=1e-4
     ),
-    loss=keras.losses.mean_absolute_error,
+    loss=keras.losses.mean_absolute_error
 )
 model.normalizer.adapt(train)
+
+# generated_images = model.generate(n_images=10, diffusion_steps=20).numpy()

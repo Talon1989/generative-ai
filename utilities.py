@@ -2,6 +2,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 keras = tf.keras
+import torch
+import torchvision
+from torch.utils.data import DataLoader, random_split
+
 
 def covariance_matrix(matrix: np.array):
     mean_vector = np.mean(matrix, axis=0)

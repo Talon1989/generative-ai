@@ -1,7 +1,13 @@
 import numpy as np
 import tensorflow as tf
-
 keras = tf.keras
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.utils.data as data
+
+
+# TENSORFLOW KERAS
 
 
 class MaskedConvLayer(keras.layers.Layer):
@@ -96,3 +102,21 @@ class UpBlock(keras.layers.Layer):
             x = self.concat([x, skips.pop()])  # get DownBlock list and concat it to current output
             x = block(x)  # reduce number of channels in the image
         return [x, skips]
+
+
+##############################################################################
+
+
+# PYTORCH
+
+
+
+
+
+
+
+
+
+
+
+
