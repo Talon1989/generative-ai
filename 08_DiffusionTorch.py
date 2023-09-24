@@ -86,3 +86,9 @@ def offset_cosine_diffusion_schedule(diffusion_times):
 
 
 linear = linear_diffusion_schedule(10)
+
+
+class UNET(nn.Module):
+
+    # TODO
+    pass

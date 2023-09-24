@@ -110,10 +110,18 @@ class UpBlock(keras.layers.Layer):
 # PYTORCH
 
 
+class ResidualBlock(nn.Module):
+    def __init__(self):
+        super().__init__()
+        pass
 
 
+class DownBlock(nn.Module):
+    pass
 
 
+class UpBlock(nn.Module):
+    pass
 
 
 
