@@ -1,9 +1,11 @@
 import numpy as np
+import copy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
 import torchvision
+import torchmetrics
 from custom_modules_torch import ResidualBlock, DownBlock, UpBlock
 
 
@@ -169,16 +171,40 @@ class UNET(nn.Module):
 
 IMAGE_SIZE = 64
 BATCH_SIZE = 64
+PATH = "/home/talon/datasets/flower-dataset/dataset"
 
 
+class DiffusionModel(nn.Module):
+
+    def __init__(self, unet_model: UNET, diff_schedule):
+        super().__init__()
+        # self.normalizer =
+        self.network = unet_model
+        self.ema_network = copy.deepcopy(self.network)
+        self.diffusion_schedule = diff_schedule
+        self.noise_loss_tracker = torchmetrics.MeanMetric()
+
+    def ema_soft_update(self):
+        for weight, ema_weight in zip(self.network.parameters(), self.ema_network.parameters()):
+            ema_weight.data.copy_(EMA * ema_weight.data + (1.0 - EMA) * weight.data)
+
+    def denoise(self, noisy_images, noise_rates, signal_rates, training):
+        if training:
+            self.network.train()
+            pred_noises = self.network([noisy_images, noise_rates ** 2])
+        else:
+            self.ema_network.eval()
+            with torch.no_grad():
+                pred_noises = self.ema_network([noisy_images, noise_rates ** 2])
+        pred_images = (noisy_images - (noise_rates * pred_noises)) / signal_rates
+        return pred_noises, pred_images
+
+
+# unet = UNET(3)
 diffusion_times = torch.ones(BATCH_SIZE, 1, 1, 1, device=device) - 1/10 * 2
 a, b = cosine_diffusion_schedule(diffusion_times)
-# embds = sinusoidal_embedding(a)
-
-
-unet = UNET(3)
 images, labels = next(iter(train_data))
-print(unet([images, a]))
+# output = unet([images, a])
 
 
 
