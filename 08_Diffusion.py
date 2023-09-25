@@ -8,7 +8,7 @@ from call_me import DiffusionSaveModel
 import warnings
 keras = tf.keras
 from utilities import *
-from custom_layers import ResidualBlock, UpBlock, DownBlock
+from custom_layers_keras import ResidualBlock, UpBlock, DownBlock
 # warnings.filterwarnings('ignore')
 
 
@@ -402,3 +402,13 @@ model.compile(
 model.normalizer.adapt(train)
 
 # generated_images = model.generate(n_images=10, diffusion_steps=20).numpy()
+
+
+# TESTING FOR TORCH VERSION
+
+
+# diffusion_times = tf.ones(shape=(32, 1, 1, 1)) - 1/20 * 2
+# a, b = cosine_diffusion_schedule(diffusion_times)
+# embs = sinusoidal_embedding(a)
+
+

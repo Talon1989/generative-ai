@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
 import torchvision
+from custom_modules_torch import ResidualBlock, DownBlock, UpBlock
 
 
 device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
@@ -52,8 +53,8 @@ train_data = image_dataloader_from_directory(directory=PATH)
 #     images, labels = imgs, lbs
 #     print(images.shape)
 #     break
-# images, labels = next(iter(train_data))
-# images = images.numpy()
+images, labels = next(iter(train_data))
+images = images.numpy()
 
 
 def linear_diffusion_schedule(diffusion_times):
@@ -68,9 +69,10 @@ def linear_diffusion_schedule(diffusion_times):
 
 
 def cosine_diffusion_schedule(diffusion_times):
-    diffusion_times = torch.tensor(diffusion_times)
-    signal_rates = torch.cos(diffusion_times * torch.pi / 2)
+    if type(diffusion_times) is not torch.Tensor:
+        diffusion_times = torch.tensor(diffusion_times)
     noise_rates = torch.sin(diffusion_times * torch.pi / 2)
+    signal_rates = torch.cos(diffusion_times * torch.pi / 2)
     return noise_rates, signal_rates
 
 
@@ -88,7 +90,227 @@ def offset_cosine_diffusion_schedule(diffusion_times):
 linear = linear_diffusion_schedule(10)
 
 
-class UNET(nn.Module):
+# def sinusoidal_embedding(x):
+#     frequencies = torch.exp(
+#         torch.linspace(
+#             torch.log(torch.tensor(1.)),  # start
+#             torch.log(torch.tensor(1000.)),  # end
+#             NOISE_EMBEDDING_SIZE // 2
+#         )
+#     )
+#     angular_speeds = 2.0 * torch.pi * frequencies
+#     embeddings = torch.cat(
+#         [torch.sin(angular_speeds * x), torch.cos(angular_speeds * x)],
+#         dim=3
+#     )
+#     return embeddings
 
-    # TODO
-    pass
+
+def sinusoidal_embedding(x):
+    frequencies = torch.exp(
+        torch.linspace(
+            torch.log(torch.tensor(1.)),  # start
+            torch.log(torch.tensor(1000.)),  # end
+            NOISE_EMBEDDING_SIZE // 2
+        )
+    ).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+    angular_speeds = 2.0 * torch.pi * frequencies
+    embeddings = torch.cat(
+        [torch.sin(angular_speeds * x), torch.cos(angular_speeds * x)],
+        dim=1
+    )
+    return embeddings
+
+
+class UNET(nn.Module):
+    def __init__(self, in_channels: int):
+        super().__init__()
+        self.image_conv = nn.Conv2d(in_channels=in_channels, out_channels=32, kernel_size=1)
+        self.noise_embedding = sinusoidal_embedding
+        self.noise_upsampling = nn.Upsample(scale_factor=64, mode='nearest')
+        self.skips = []
+        self.down_block_1 = DownBlock(in_channels=in_channels, width=32, block_depth=2)
+        self.down_block_2 = DownBlock(in_channels=in_channels, width=64, block_depth=2)
+        self.down_block_3 = DownBlock(in_channels=in_channels, width=96, block_depth=2)
+        self.residual_block_1 = ResidualBlock(in_channels=in_channels, width=128)
+        self.residual_block_1 = ResidualBlock(in_channels=in_channels, width=128)
+        self.up_block_1 = UpBlock(in_channels=in_channels, width=96, block_depth=2)
+        self.up_block_2 = UpBlock(in_channels=in_channels, width=64, block_depth=2)
+        self.up_block_3 = UpBlock(in_channels=in_channels, width=32, block_depth=2)
+        self.out_conv = nn.Conv2d(in_channels=in_channels, out_channels=3, kernel_size=1)
+        self.out_conv.weight.data.fill_(0.)  # initialize out_conv weights to zero values
+
+    def forward(self, x):
+
+        noisy_images, noise_variance = x
+
+        noisy_images = self.image_conv(noisy_images)
+        noise_variance = self.noise_embedding(noise_variance)
+        noise_variance = self.noise_upsampling(noise_variance)
+
+        x = torch.cat([noisy_images, noise_variance], dim=1)
+        skips = []
+
+        x, skips = self.down_block_1((x, skips))
+        x, skips = self.down_block_2((x, skips))
+        x, skips = self.down_block_3((x, skips))
+
+        x = self.residual_block_1(x)
+        x = self.residual_block_2(x)
+
+        x, skips = self.up_block_1((x, skips))
+        x, skips = self.up_block_2((x, skips))
+        x, _ = self.up_block_3((x, skips))
+
+        x = self.out_conv(x)
+
+        return x
+
+# diffusion_times = torch.ones(32, 1, 1, 1, device=device) - 1/10 * 2
+# a, b = cosine_diffusion_schedule(diffusion_times)
+# embds = sinusoidal_embedding(diffusion_times)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
