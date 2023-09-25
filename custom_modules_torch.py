@@ -40,34 +40,36 @@ class ResidualBlock(nn.Module):
         return x + residual
 
 
-class DownBlock(nn.Module):
-    def __init__(self, in_channels: int, width, block_depth):
+class DownBlock(nn.Module):  # in_channels are lists
+    def __init__(self, in_channels, width, block_depth):
         super().__init__()
         self.block_depth = block_depth
         # self.residual_blocks = [ResidualBlock(in_channels, width) for _ in range(block_depth)]
         self.residual_blocks = nn.ModuleList(
-            [ResidualBlock(in_channels, width) for _ in range(block_depth)]
+            [ResidualBlock(in_channels[i], width) for i in range(block_depth)]
         )
         self.down_sample = nn.AvgPool2d(kernel_size=2)
 
     def forward(self, x):
         x, skips = x
         # skips = skips_.copy()
+        counter = 1
         for block in self.residual_blocks:
             x = block(x)
             skips.append(x)
+            counter += 1
         x = self.down_sample(x)
         return [x, skips]
 
 
-class UpBlock(nn.Module):
-    def __init__(self, in_channels: int, width, block_depth):
+class UpBlock(nn.Module):  # in_channels are lists
+    def __init__(self, in_channels, width, block_depth):
         super().__init__()
         self.block_depth = block_depth
         self.up_sample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
         # self.residual_blocks = [ResidualBlock(in_channels, width) for _ in range(block_depth)]
         self.residual_blocks = nn.ModuleList(
-            [ResidualBlock(in_channels, width) for _ in range(block_depth)]
+            [ResidualBlock(in_channels[i], width) for i in range(block_depth)]
         )
 
     def forward(self, x):

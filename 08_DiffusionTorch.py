@@ -87,9 +87,6 @@ def offset_cosine_diffusion_schedule(diffusion_times):
     return noise_rates, signal_rates
 
 
-linear = linear_diffusion_schedule(10)
-
-
 # def sinusoidal_embedding(x):
 #     frequencies = torch.exp(
 #         torch.linspace(
@@ -128,27 +125,30 @@ class UNET(nn.Module):
         self.image_conv = nn.Conv2d(in_channels=in_channels, out_channels=32, kernel_size=1)
         self.noise_embedding = sinusoidal_embedding
         self.noise_upsampling = nn.Upsample(scale_factor=64, mode='nearest')
-        self.skips = []
-        self.down_block_1 = DownBlock(in_channels=in_channels, width=32, block_depth=2)
-        self.down_block_2 = DownBlock(in_channels=in_channels, width=64, block_depth=2)
-        self.down_block_3 = DownBlock(in_channels=in_channels, width=96, block_depth=2)
-        self.residual_block_1 = ResidualBlock(in_channels=in_channels, width=128)
-        self.residual_block_1 = ResidualBlock(in_channels=in_channels, width=128)
-        self.up_block_1 = UpBlock(in_channels=in_channels, width=96, block_depth=2)
-        self.up_block_2 = UpBlock(in_channels=in_channels, width=64, block_depth=2)
-        self.up_block_3 = UpBlock(in_channels=in_channels, width=32, block_depth=2)
-        self.out_conv = nn.Conv2d(in_channels=in_channels, out_channels=3, kernel_size=1)
+        self.down_block_1 = DownBlock(in_channels=[64, 32], width=32, block_depth=2)
+        self.down_block_2 = DownBlock(in_channels=[32, 64], width=64, block_depth=2)
+        self.down_block_3 = DownBlock(in_channels=[64, 96], width=96, block_depth=2)
+        self.residual_block_1 = ResidualBlock(in_channels=96, width=128)
+        self.residual_block_2 = ResidualBlock(in_channels=128, width=128)
+        self.up_block_1 = UpBlock(in_channels=[224, 192], width=96, block_depth=2)
+        self.up_block_2 = UpBlock(in_channels=[160, 128], width=64, block_depth=2)
+        self.up_block_3 = UpBlock(in_channels=[96, 64], width=32, block_depth=2)
+        self.out_conv = nn.Conv2d(in_channels=32, out_channels=3, kernel_size=1)
         self.out_conv.weight.data.fill_(0.)  # initialize out_conv weights to zero values
 
     def forward(self, x):
 
         noisy_images, noise_variance = x
+        # print('input data shape:   images %s   noise % s ' % (noisy_images.shape, noise_variance.shape))
 
         noisy_images = self.image_conv(noisy_images)
         noise_variance = self.noise_embedding(noise_variance)
         noise_variance = self.noise_upsampling(noise_variance)
 
+        # print('conv and embed shape:   images %s   noise % s ' % (noisy_images.shape, noise_variance.shape))
+
         x = torch.cat([noisy_images, noise_variance], dim=1)
+
         skips = []
 
         x, skips = self.down_block_1((x, skips))
@@ -166,13 +166,19 @@ class UNET(nn.Module):
 
         return x
 
-# diffusion_times = torch.ones(32, 1, 1, 1, device=device) - 1/10 * 2
-# a, b = cosine_diffusion_schedule(diffusion_times)
-# embds = sinusoidal_embedding(diffusion_times)
+
+IMAGE_SIZE = 64
+BATCH_SIZE = 64
 
 
+diffusion_times = torch.ones(BATCH_SIZE, 1, 1, 1, device=device) - 1/10 * 2
+a, b = cosine_diffusion_schedule(diffusion_times)
+# embds = sinusoidal_embedding(a)
 
 
+unet = UNET(3)
+images, labels = next(iter(train_data))
+print(unet([images, a]))
 
 
 
