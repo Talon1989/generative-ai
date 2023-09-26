@@ -1,5 +1,6 @@
 import numpy as np
 import copy
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -141,13 +142,10 @@ class UNET(nn.Module):
     def forward(self, x):
 
         noisy_images, noise_variance = x
-        # print('input data shape:   images %s   noise % s ' % (noisy_images.shape, noise_variance.shape))
 
         noisy_images = self.image_conv(noisy_images)
         noise_variance = self.noise_embedding(noise_variance)
         noise_variance = self.noise_upsampling(noise_variance)
-
-        # print('conv and embed shape:   images %s   noise % s ' % (noisy_images.shape, noise_variance.shape))
 
         x = torch.cat([noisy_images, noise_variance], dim=1)
 
@@ -175,14 +173,25 @@ PATH = "/home/talon/datasets/flower-dataset/dataset"
 
 
 class DiffusionModel(nn.Module):
-
     def __init__(self, unet_model: UNET, diff_schedule):
         super().__init__()
-        # self.normalizer =
         self.network = unet_model
         self.ema_network = copy.deepcopy(self.network)
         self.diffusion_schedule = diff_schedule
         self.noise_loss_tracker = torchmetrics.MeanMetric()
+        self.optimizer = torch.optim.AdamW(
+            params=self.network.parameters(),
+            lr=1e-3,
+            weight_decay=1e-4
+        )
+        self.criterion = nn.L1Loss()
+        # self.criterion = nn.MSELoss()
+
+    def get_normalizer(self, images):
+        rgb_mean = images.mean(dim=[0, 2, 3])  # not on 1 because it's rbg
+        rgb_std = images.std(dim=[0, 2, 3])  # not on 1 because it's rbg
+        normalize_transform = torchvision.transforms.Normalize(rgb_mean, rgb_std)
+        return normalize_transform
 
     def ema_soft_update(self):
         for weight, ema_weight in zip(self.network.parameters(), self.ema_network.parameters()):
@@ -199,26 +208,81 @@ class DiffusionModel(nn.Module):
         pred_images = (noisy_images - (noise_rates * pred_noises)) / signal_rates
         return pred_noises, pred_images
 
+    def train_step(self, images):
 
-# unet = UNET(3)
-diffusion_times = torch.ones(BATCH_SIZE, 1, 1, 1, device=device) - 1/10 * 2
-a, b = cosine_diffusion_schedule(diffusion_times)
-images, labels = next(iter(train_data))
+        # images, _ = data  # torch data.DataLoader automatically creates a label list
+        noises = torch.randn_like(images)
+        batch_size = images.shape[0]
+
+        # sample diffusion times from uniform [0, 1]
+        diffusion_times = torch.rand(size=(batch_size, 1, 1, 1))
+        # use them to generate noise and signal rates
+        noise_rates, signal_rates = self.diffusion_schedule(diffusion_times)
+        noisy_images = (signal_rates * images) + (noise_rates + noises)
+
+        self.optimizer.zero_grad()
+        pred_noises, pred_images = self.denoise(
+            noisy_images, noise_rates, signal_rates, training=True
+        )
+        noise_loss = self.criterion(noises, pred_noises)
+        noise_loss.backward()
+        self.optimizer.step()
+
+        self.ema_soft_update()
+
+        self.noise_loss_tracker.update(noise_loss)
+        print('Noise loss : %.4f' % self.noise_loss_tracker.compute().item())
+
+    def reverse_diffusion(self, initial_noise, diffusion_steps):
+        pass
+
+    def denormalize(self, images):
+        pass
+
+    def generate(self, n_images, diffusion_steps):
+        pass
+
+
+# diffusion_times = torch.ones(BATCH_SIZE, 1, 1, 1, device=device) - 1/10 * 2
+# a, b = cosine_diffusion_schedule(diffusion_times)
+# images, labels = next(iter(train_data))
 # output = unet([images, a])
 
 
+# # torch multivariate normal outputs
+# means = torch.tensor([0, 1, 2], dtype=torch.float32).unsqueeze(0).expand(5, -1)
+# stds = torch.tensor([1, .9, .8], dtype=torch.float32).unsqueeze(0).expand(5, -1)
+# torch.normal(means, stds)  # no need to specify size in this case
 
 
+unet = UNET(3)
+diffusion_model = DiffusionModel(unet, cosine_diffusion_schedule)
 
 
+def train_diffusion(n_epochs, model_path, save_model=False):
+    total_batches = len(train_data)
+    for epoch in range(n_epochs):
+        start_time = time.time()
+        for batch_number, (images, _) in enumerate(train_data, start=1):
+            print('Epoch: %d | Batch %d/%d:' % (epoch + 1, batch_number, total_batches))
+            diffusion_model.train_step(images)
+        if save_model:
+            torch.save(diffusion_model.state_dict(), f=model_path+'.pth')
+            print('Model saved in %s' % (model_path+'.pth'))
+        end_time = time.time()
+        print('Elapsed time for training epoch %d : %.3f' % (epoch + 1, (start_time - end_time)/60))
 
 
+M_PATH = '/home/talon/PycharmProjects/generative-ai/data/models/U-Net-Pytorch'
 
 
+## LOAD TORCH MODEL
+# model_state_dict = torch.load(M_PATH+'.pth')
+# loaded_model = DiffusionModel(UNET(3), cosine_diffusion_schedule)
+# loaded_model.load_state_dict(model_state_dict)
 
 
-
-
+# train_diffusion(10, model_path=M_PATH, save_model=True)
 
 
 
