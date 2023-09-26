@@ -1,6 +1,7 @@
 import numpy as np
 import copy
 import time
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -170,6 +171,7 @@ class UNET(nn.Module):
 IMAGE_SIZE = 64
 BATCH_SIZE = 64
 PATH = "/home/talon/datasets/flower-dataset/dataset"
+NORMALIZER_PATH = '/home/talon/PycharmProjects/generative-ai/data/normalizer_data'
 
 
 class DiffusionModel(nn.Module):
@@ -177,6 +179,8 @@ class DiffusionModel(nn.Module):
         super().__init__()
         self.network = unet_model
         self.ema_network = copy.deepcopy(self.network)
+        self.normalizer = None
+        self.last_batch_size = 0  # util to be used with normalizer
         self.diffusion_schedule = diff_schedule
         self.noise_loss_tracker = torchmetrics.MeanMetric()
         self.optimizer = torch.optim.AdamW(
@@ -187,11 +191,46 @@ class DiffusionModel(nn.Module):
         self.criterion = nn.L1Loss()
         # self.criterion = nn.MSELoss()
 
-    def get_normalizer(self, images):
+    @staticmethod
+    def get_normalizer(images):
         rgb_mean = images.mean(dim=[0, 2, 3])  # not on 1 because it's rbg
         rgb_std = images.std(dim=[0, 2, 3])  # not on 1 because it's rbg
         normalize_transform = torchvision.transforms.Normalize(rgb_mean, rgb_std)
         return normalize_transform
+
+    def update_stats(self, prev_mean, prev_std, prev_count, images):
+        # Compute current batch statistics
+        batch_mean = images.mean(dim=[0, 2, 3])
+        batch_std = images.std(dim=[0, 2, 3])
+        batch_count = images.shape[0]
+
+        updated_mean = (prev_mean * prev_count + batch_mean * batch_count) / (prev_count + batch_count)
+
+        batch_var = batch_std ** 2
+        prev_var = prev_std ** 2
+        updated_var = (prev_count * prev_var + batch_count * batch_var +
+                       (prev_count * batch_count * (prev_mean - batch_mean) ** 2) / (prev_count + batch_count)) / (
+                                  prev_count + batch_count)
+
+        updated_std = torch.sqrt(updated_var)
+
+        self.last_batch_size = batch_count
+
+        return updated_mean, updated_std
+
+    def update_normalizer(self, images):
+        if self.normalizer is None:
+            means, stds = self.update_stats(0, 0, 0, images)
+            self.normalizer = torchvision.transforms.Normalize(means, stds)
+        else:
+            prev_means, prev_stds = self.normalizer.mean, self.normalizer.std
+            means, stds = self.update_stats(prev_means, prev_stds, self.last_batch_size, images)
+            self.normalizer = torchvision.transforms.Normalize(means, stds)
+
+    def save_normalizer(self, path):
+        with open(path, 'w') as f:
+            f.write(' '.join(map(str, self.normalizer.mean.numpy()))+'\n')
+            f.write(' '.join(map(str, self.normalizer.std.numpy()))+'\n')
 
     def ema_soft_update(self):
         for weight, ema_weight in zip(self.network.parameters(), self.ema_network.parameters()):
@@ -232,15 +271,42 @@ class DiffusionModel(nn.Module):
 
         self.noise_loss_tracker.update(noise_loss)
         print('Noise loss : %.4f' % self.noise_loss_tracker.compute().item())
+        self.update_normalizer(images)
 
     def reverse_diffusion(self, initial_noise, diffusion_steps):
-        pass
+        n_images = initial_noise.shape[0]
+        step_size = 1. / diffusion_steps
+        current_images = initial_noise
+        print(current_images)
+        pred_images = None
+        for step in range(diffusion_steps):
+            diffusion_times = torch.ones(size=(n_images, 1, 1, 1)) - step * step_size
+            noise_rates, signal_rates = self.diffusion_schedule(diffusion_times)
+            pred_noises, pred_images = self.denoise(
+                current_images, noise_rates, signal_rates, training=False
+            )
+            next_diffusion_times = diffusion_times - step_size
+            next_noise_rates, next_signal_rate = self.diffusion_schedule(
+                next_diffusion_times
+            )
+            current_images = (  # POSSIBLE ISSUES BELOW WITHOUT DATA RESHAPE
+                next_signal_rate * pred_images + next_noise_rates * pred_noises
+            )
+        return pred_images
 
-    def denormalize(self, images):
-        pass
+    def denormalize(self, images, normalizer_path):
+        # images = self.normalizer.mean.view(1, 3, 1, 1) + images * self.normalizer.std.view(1, 3, 1, 1)
+        with open(normalizer_path, 'r') as f:
+            lines = f.readlines()
+            means = torch.tensor(list(map(float, lines[0].split())))
+            stds = torch.tensor(list(map(float, lines[1].split())))
+        images = means.view(1, 3, 1, 1) + images * stds.view(1, 3, 1, 1)
+        return torch.clip(images, min=0., max=1.)
 
-    def generate(self, n_images, diffusion_steps):
-        pass
+    def generate(self, n_images, diffusion_steps, normalizer_path):
+        initial_noise = torch.rand(size=(n_images, 3, 64, 64))
+        generated_images = self.reverse_diffusion(initial_noise, diffusion_steps)
+        return self.denormalize(generated_images, normalizer_path)
 
 
 # diffusion_times = torch.ones(BATCH_SIZE, 1, 1, 1, device=device) - 1/10 * 2
@@ -266,26 +332,28 @@ def train_diffusion(n_epochs, model_path, save_model=False):
         for batch_number, (images, _) in enumerate(train_data, start=1):
             print('Epoch: %d | Batch %d/%d:' % (epoch + 1, batch_number, total_batches))
             diffusion_model.train_step(images)
+        diffusion_model.save_normalizer(NORMALIZER_PATH)
+        diffusion_model.normalizer = None  # resetting normalizer
         if save_model:
             torch.save(diffusion_model.state_dict(), f=model_path+'.pth')
             print('Model saved in %s' % (model_path+'.pth'))
         end_time = time.time()
-        print('Elapsed time for training epoch %d : %.3f' % (epoch + 1, (start_time - end_time)/60))
+        print('Elapsed time for training epoch %d : %.3f minutes' % (epoch + 1, (end_time - start_time)/60))
 
 
 M_PATH = '/home/talon/PycharmProjects/generative-ai/data/models/U-Net-Pytorch'
 
 
-## LOAD TORCH MODEL
+train_diffusion(16, model_path=M_PATH, save_model=True)
+
+
+# # LOAD TORCH MODEL
 # model_state_dict = torch.load(M_PATH+'.pth')
 # loaded_model = DiffusionModel(UNET(3), cosine_diffusion_schedule)
 # loaded_model.load_state_dict(model_state_dict)
 
 
-# train_diffusion(10, model_path=M_PATH, save_model=True)
-
-
-
+# gen_images = loaded_model.generate(n_images=10, diffusion_steps=20, normalizer_path=NORMALIZER_PATH)
 
 
 

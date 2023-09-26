@@ -56,6 +56,22 @@ def display_images_torch(
     plt.clf()
 
 
+def display_image_torch(
+    images: torch.Tensor, n=10, size=(20, 3), cmap="gray_r", as_type="float32"
+):
+    if images.max() > 1.0:  # normalizing the data
+        images = images / 255.0
+    elif images.min() < 0.0:
+        images = (images + 1.0) / 2.0
+    plt.figure(figsize=size)  # plotting
+    for i in range(n):
+        _ = plt.subplot(1, n, i + 1)
+        plt.imshow(images[i].permute(1, 2, 0), cmap=cmap)
+        plt.axis("off")
+    plt.show()
+    plt.clf()
+
+
 def plot_line(values: np.array, name: str):
     plt.plot(np.arange(values.shape[0]), values, c='b')
     plt.xlabel('X')
