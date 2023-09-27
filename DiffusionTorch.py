@@ -9,6 +9,7 @@ import torch.utils.data as data
 import torchvision
 import torchmetrics
 from custom_modules_torch import ResidualBlock, DownBlock, UpBlock
+from utilities import display_images_torch, display_image_torch
 
 
 device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
@@ -17,6 +18,8 @@ device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("
 PATH = "/home/talon/datasets/flower-dataset/dataset"
 EMA = 999 / 1_000
 NOISE_EMBEDDING_SIZE = 32
+IMAGE_SIZE = 64
+BATCH_SIZE = 64
 
 
 # train_data = keras.utils.image_dataset_from_directory(
@@ -42,23 +45,32 @@ def image_dataloader_from_directory(directory, image_size=(64, 64), batch_size=6
         root=directory, transform=transform_pipeline
     )
     torch.manual_seed(42)
-    dataloader = data.DataLoader(
-        dataset=dataset,
-        batch_size=batch_size,
-        shuffle=shuffle
-    )
-    return dataloader
+    # dataloader = data.DataLoader(
+    #     dataset=dataset,
+    #     batch_size=batch_size,
+    #     shuffle=shuffle
+    # )
+    # return dataloader
+    # DIVING INTO TRAIN AND VALIDATION DATA
+    train_size = int(0.8 * len(dataset))  # 80% for training
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = data.random_split(dataset, [train_size, val_size])
+    train_dataloader = data.DataLoader(
+        dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    val_dataloader = data.DataLoader(
+        dataset=val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    return train_dataloader, val_dataloader
 
 
 # shape is (64, 3, 64, 64): (batch_size, channels, dim_1, dim_2)
-train_data = image_dataloader_from_directory(directory=PATH)
+train_data, val_data = image_dataloader_from_directory(directory=PATH)
 # print(train_data.dataset.classes)
 # for imgs, lbs in train_data:
 #     images, labels = imgs, lbs
 #     print(images.shape)
 #     break
-images, labels = next(iter(train_data))
-images = images.numpy()
+# images, labels = next(iter(train_data))
+# images = images.numpy()
 
 
 def linear_diffusion_schedule(diffusion_times):
@@ -168,8 +180,6 @@ class UNET(nn.Module):
         return x
 
 
-IMAGE_SIZE = 64
-BATCH_SIZE = 64
 PATH = "/home/talon/datasets/flower-dataset/dataset"
 NORMALIZER_PATH = '/home/talon/PycharmProjects/generative-ai/data/normalizer_data'
 
@@ -188,8 +198,8 @@ class DiffusionModel(nn.Module):
             lr=1e-3,
             weight_decay=1e-4
         )
-        self.criterion = nn.L1Loss()
-        # self.criterion = nn.MSELoss()
+        # self.criterion = nn.L1Loss()
+        self.criterion = nn.MSELoss()
 
     @staticmethod
     def get_normalizer(images):
@@ -245,6 +255,11 @@ class DiffusionModel(nn.Module):
             with torch.no_grad():
                 pred_noises = self.ema_network([noisy_images, noise_rates ** 2])
         pred_images = (noisy_images - (noise_rates * pred_noises)) / signal_rates
+        # print('minimum value of pred_images : %s' % torch.min(pred_images))
+        # print('maximum value of pred_noises : %s' % torch.max(pred_noises))
+        with torch.no_grad():
+            print('pred_noises mean value:%.3f | std:%.3f' %
+                  (torch.mean(pred_noises).numpy(), torch.std(pred_noises).numpy()))
         return pred_noises, pred_images
 
     def train_step(self, images):
@@ -265,6 +280,8 @@ class DiffusionModel(nn.Module):
         )
         noise_loss = self.criterion(noises, pred_noises)
         noise_loss.backward()
+        # gradient clipping
+        torch.nn.utils.clip_grad_norm_(self.network.parameters(), max_norm=1)
         self.optimizer.step()
 
         self.ema_soft_update()
@@ -273,11 +290,23 @@ class DiffusionModel(nn.Module):
         print('Noise loss : %.4f' % self.noise_loss_tracker.compute().item())
         self.update_normalizer(images)
 
+    def val_step(self, images):
+        noises = torch.randn_like(images)
+        batch_size = images.shape[0]
+        diffusion_times = torch.rand(size=(batch_size, 1, 1, 1))
+        noise_rates, signal_rates = self.diffusion_schedule(diffusion_times)
+        noisy_images = (signal_rates * images) + (noise_rates + noises)
+        pred_noises, pred_images = self.denoise(
+            noisy_images, noise_rates, signal_rates, training=False
+        )
+        loss = self.criterion(noises, pred_noises)
+        return loss.item()
+
     def reverse_diffusion(self, initial_noise, diffusion_steps):
         n_images = initial_noise.shape[0]
         step_size = 1. / diffusion_steps
         current_images = initial_noise
-        print(current_images)
+        # print(current_images)
         pred_images = None
         for step in range(diffusion_steps):
             diffusion_times = torch.ones(size=(n_images, 1, 1, 1)) - step * step_size
@@ -289,9 +318,10 @@ class DiffusionModel(nn.Module):
             next_noise_rates, next_signal_rate = self.diffusion_schedule(
                 next_diffusion_times
             )
-            current_images = (  # POSSIBLE ISSUES BELOW WITHOUT DATA RESHAPE
+            current_images = (
                 next_signal_rate * pred_images + next_noise_rates * pred_noises
             )
+            # print(torch.max(current_images))
         return pred_images
 
     def denormalize(self, images, normalizer_path):
@@ -306,7 +336,8 @@ class DiffusionModel(nn.Module):
     def generate(self, n_images, diffusion_steps, normalizer_path):
         initial_noise = torch.rand(size=(n_images, 3, 64, 64))
         generated_images = self.reverse_diffusion(initial_noise, diffusion_steps)
-        return self.denormalize(generated_images, normalizer_path)
+        generations = self.denormalize(generated_images, normalizer_path)
+        return generations
 
 
 # diffusion_times = torch.ones(BATCH_SIZE, 1, 1, 1, device=device) - 1/10 * 2
@@ -325,26 +356,28 @@ unet = UNET(3)
 diffusion_model = DiffusionModel(unet, cosine_diffusion_schedule)
 
 
-def train_diffusion(n_epochs, model_path, save_model=False):
+def train_diffusion(model, n_epochs, model_path, save_model=False):
     total_batches = len(train_data)
     for epoch in range(n_epochs):
         start_time = time.time()
         for batch_number, (images, _) in enumerate(train_data, start=1):
-            print('Epoch: %d | Batch %d/%d:' % (epoch + 1, batch_number, total_batches))
-            diffusion_model.train_step(images)
-        diffusion_model.save_normalizer(NORMALIZER_PATH)
-        diffusion_model.normalizer = None  # resetting normalizer
+            print('Epoch: %d | Batch %d/%d:\n' % (epoch + 1, batch_number, total_batches))
+            model.train_step(images)
+        model.save_normalizer(NORMALIZER_PATH)
+        model.normalizer = None  # resetting normalizer
         if save_model:
-            torch.save(diffusion_model.state_dict(), f=model_path+'.pth')
+            torch.save(model.state_dict(), f=model_path+'.pth')
             print('Model saved in %s' % (model_path+'.pth'))
         end_time = time.time()
         print('Elapsed time for training epoch %d : %.3f minutes' % (epoch + 1, (end_time - start_time)/60))
+        # RUNNING VALIDATION
+        cumulative_validation_loss = 0
+        for batch_number, (images, _) in enumerate(val_data, start=1):
+            cumulative_validation_loss += model.val_step(images)
+        print('Cumulative validation loss %.4f' % cumulative_validation_loss)
 
 
 M_PATH = '/home/talon/PycharmProjects/generative-ai/data/models/U-Net-Pytorch'
-
-
-train_diffusion(16, model_path=M_PATH, save_model=True)
 
 
 # # LOAD TORCH MODEL
@@ -353,10 +386,11 @@ train_diffusion(16, model_path=M_PATH, save_model=True)
 # loaded_model.load_state_dict(model_state_dict)
 
 
+train_diffusion(diffusion_model, 8, model_path=M_PATH, save_model=True)
+
+
 # gen_images = loaded_model.generate(n_images=10, diffusion_steps=20, normalizer_path=NORMALIZER_PATH)
-
-
-
+# display_images_torch(gen_images)
 
 
 

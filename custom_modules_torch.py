@@ -22,10 +22,10 @@ class ResidualBlock(nn.Module):
         # affine determines if there are learnable parameters
         self.b_n = nn.BatchNorm2d(num_features=in_channels, affine=False)
         self.conv_1 = nn.Conv2d(in_channels=in_channels,
-                                out_channels=self.width, kernel_size=3, padding='same')
+                                out_channels=self.width, kernel_size=3, padding=1)
         self.swish = Swish()
         self.conv_2 = nn.Conv2d(in_channels=self.width,
-                                out_channels=self.width, kernel_size=3, padding='same')
+                                out_channels=self.width, kernel_size=3, padding=1)
 
     def forward(self, x):
         inp_width = x.shape[1]  # number of channels
