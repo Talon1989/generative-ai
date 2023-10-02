@@ -7,7 +7,7 @@ import pandas as pd
 from call_me import SaveModel
 
 
-WINE_PATH = '/home/talon/datasets/wine-reviews/winemag-data-130k-v2.json'
+WINE_PATH = '/home/fabio/.kaggle/datasets/wine-reviews/winemag-data-130k-v2.json'
 PATH = '/home/talon/PycharmProjects/generative-ai/data/models/'
 BATCH_SIZE = 2**5
 VOCAB_SIZE = 10_000

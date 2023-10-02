@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torchvision import transforms
 import torch.nn as nn
-from DiffusionTorch import UNET, DiffusionModel, train_data, cosine_diffusion_schedule
+from TorchDiffusion import UNET, DiffusionModel, train_data, cosine_diffusion_schedule
 
 
 class TestDiffusionTorch(TestCase):

@@ -16,7 +16,7 @@ from utilities import display_images_torch, display_image_torch
 device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
 
-PATH = "/home/talon/datasets/flower-dataset/dataset"
+PATH = "/home/fabio/.kaggle/datasets/pytorch-challange-flower-dataset/dataset/train/"
 EMA = 999 / 1_000
 NOISE_EMBEDDING_SIZE = 32
 IMAGE_SIZE = 64
@@ -415,13 +415,13 @@ M_PATH = '/home/talon/PycharmProjects/generative-ai/data/models/U-Net-Pytorch'
 
 
 # LOAD TORCH MODEL
-model_state_dict = torch.load(M_PATH+'.pth')
-loaded_model = DiffusionModel(UNET(3), cosine_diffusion_schedule)
-loaded_model.load_state_dict(model_state_dict)
+# model_state_dict = torch.load(M_PATH+'.pth')
+# loaded_model = DiffusionModel(UNET(3), cosine_diffusion_schedule)
+# loaded_model.load_state_dict(model_state_dict)
 
 
-# train_diffusion(diffusion_model, 8, model_path=M_PATH, save_model=True)
+train_diffusion(diffusion_model, 8, model_path=M_PATH, save_model=False)
 
 
-gen_images = loaded_model.generate(n_images=10, diffusion_steps=20, normalizer_path=NORMALIZER_PATH)
-display_images_torch(gen_images)
+# gen_images = loaded_model.generate(n_images=10, diffusion_steps=20, normalizer_path=NORMALIZER_PATH)
+# display_images_torch(gen_images)

@@ -357,8 +357,8 @@ class UNET(keras.models.Model):
 
 
 # unet = make_unet_class_inheritance()
-# unet = UNET()
-# unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
+unet = UNET()
+unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
 
 
 # # Example input tensor of shape (1, 2, 2, 1)
@@ -374,32 +374,32 @@ class UNET(keras.models.Model):
 # print(output)
 
 
-# model = DiffusionModel(model=unet, diff_schedule=cosine_diffusion_schedule)
-# # save_model_callback = SaveModel(model.network, "data/models/U-Net")
-# save_model_callback = DiffusionSaveModel(model, "data/models/U-Net")
-# model.compile(
-#     optimizer=keras.optimizers.experimental.AdamW(
-#         learning_rate=1e-3, weight_decay=1e-4
-#     ),
-#     loss=keras.losses.mean_absolute_error,
-# )
-# model.normalizer.adapt(train)
-# model.fit(train, epochs=10, callbacks=[save_model_callback])
-
-
-unet = keras.models.load_model('data/models/U-Net')
-unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
-model = DiffusionModel(
-    model=unet,
-    diff_schedule=cosine_diffusion_schedule
-)
+model = DiffusionModel(model=unet, diff_schedule=cosine_diffusion_schedule)
+# save_model_callback = SaveModel(model.network, "data/models/U-Net")
+save_model_callback = DiffusionSaveModel(model, "data/models/U-Net")
 model.compile(
     optimizer=keras.optimizers.experimental.AdamW(
         learning_rate=1e-3, weight_decay=1e-4
     ),
-    loss=keras.losses.mean_absolute_error
+    loss=keras.losses.mean_absolute_error,
 )
 model.normalizer.adapt(train)
+model.fit(train, epochs=10, callbacks=[save_model_callback])
+
+
+# unet = keras.models.load_model('data/models/U-Net')
+# unet.build(input_shape=[(None, 64, 64, 3), (None, 1, 1, 1)])
+# model = DiffusionModel(
+#     model=unet,
+#     diff_schedule=cosine_diffusion_schedule
+# )
+# model.compile(
+#     optimizer=keras.optimizers.experimental.AdamW(
+#         learning_rate=1e-3, weight_decay=1e-4
+#     ),
+#     loss=keras.losses.mean_absolute_error
+# )
+# model.normalizer.adapt(train)
 
 # generated_images = model.generate(n_images=10, diffusion_steps=20).numpy()
 
