@@ -3,15 +3,17 @@ import copy
 import time
 import os
 import json
-
+import time
 import spacy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 import torchmetrics
 import torchtext
+from torch.utils.data.dataset import T_co
+
 from custom_modules_torch import ResidualBlock, DownBlock, UpBlock
 from utilities import display_images_torch, display_image_torch
 
@@ -72,19 +74,27 @@ def get_wine_og():
     return text_data
 
 
-t_d = get_wine_og()
+text_data = get_wine_og()
 
 
-# ASK GPT-4 TO TURN keras.layers.TextVectorization INTO PYTORCH CODE
+# GPT3 APPROACH
+# tokenizer = torchtext.data.utils.get_tokenizer('spacy')
+# tokenized_data = [tokenizer(review) for review in text_data]
+tokenized_data = [review.split() for review in text_data]
+# set is used to ensure uniform spreading of key-words in the vocabulary
+# (also set removes duplicates)
+vocab = {word: idx for idx, word in enumerate(
+    set(word for review in tokenized_data for word in review))}
+vocab['<pad>'] = len(vocab)  # adding one more mapping for zero padding
 
 
-# try:
-#     nlp = spacy.load('en_core_web_sm')
-# except IOError:
-#     spacy.cli.download('en_core_web_sm')
-#     nlp = spacy.load('en_core_web_sm')
+class TextVectorization(Dataset):
 
+    def __getitem__(self, index) -> T_co:
+        pass
 
+    def __init__(self):
+        super().__init__()
 
 
 # BUILDING THE TRANSFORMER

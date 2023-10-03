@@ -190,8 +190,8 @@ def make_gpt():
 gpt = make_gpt()
 
 
-save_callback = SaveModel(model=gpt, path='/home/talon/PycharmProjects/generative-ai/data/models/GPT')
-gpt.fit(train_ds, epochs=5, callbacks=[save_callback])
+# save_callback = SaveModel(model=gpt, path='/home/talon/PycharmProjects/generative-ai/data/models/GPT')
+# gpt.fit(train_ds, epochs=5, callbacks=[save_callback])
 
 
 
