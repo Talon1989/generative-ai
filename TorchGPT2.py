@@ -191,7 +191,7 @@ def train(model: nn.Module, epoch: int) -> None:
 
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm(model.parameters(), GRAD_CLIP_VALUE)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_VALUE)
         optimizer.step()
 
         total_loss += loss.item()
@@ -222,143 +222,41 @@ def evaluate(model: nn.Module, eval_data_b: Tensor) -> float:
 
 
 best_val_loss = float('inf')
-local_path = os.getcwd()  # REWRITE USING THIS TO PROPER SAVE LOCALLY
-
-
-with TemporaryDirectory() as temp_dir:
-    best_model_params_path = os.path.join(temp_dir, 'best_model_params.pth')
-    for ep in range(1, N_EPOCHS+1):
-        ep_start_time = time.time()
-        train(model_, ep)
-        val_loss = evaluate(model_, val_data_batched)
-        val_ppl = math.exp(val_loss)
-        elapsed_time = time.time() - ep_start_time
-        print('-' * 89)
-        print('End of epoch %d | time: %.3fs | val loss: %.3f | val ppl: %.3f' %
-              (ep, elapsed_time, val_ppl, val_ppl))
-        print('-' * 89)
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model_.state_dict(), best_model_params_path)
-        scheduler.step()
-    model_.load_state_dict(torch.load(best_model_params_path))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+save_path = os.getcwd() + '/data/models/pytorch_GPT.pth'
+
+
+# with TemporaryDirectory() as temp_dir:
+#     best_model_params_path = os.path.join(temp_dir, 'best_model_params.pth')
+#     for ep in range(1, N_EPOCHS+1):
+#         ep_start_time = time.time()
+#         train(model_, ep)
+#         val_loss = evaluate(model_, val_data_batched)
+#         val_ppl = math.exp(val_loss)
+#         elapsed_time = time.time() - ep_start_time
+#         print('-' * 89)
+#         print('End of epoch %d | time: %.3fs | val loss: %.3f | val ppl: %.3f' %
+#               (ep, elapsed_time, val_ppl, val_ppl))
+#         print('-' * 89)
+#         if val_loss < best_val_loss:
+#             best_val_loss = val_loss
+#             torch.save(model_.state_dict(), best_model_params_path)
+#         scheduler.step()
+#     model_.load_state_dict(torch.load(best_model_params_path))
+
+
+for ep in range(1, N_EPOCHS+1):
+    ep_start_time = time.time()
+    train(model_, ep)
+    val_loss = evaluate(model_, val_data_batched)
+    val_ppl = math.exp(val_loss)
+    elapsed_time = time.time() - ep_start_time
+    print('-' * 89)
+    print('End of epoch %d | time: %.3fs | val loss: %.3f | val ppl: %.3f' %
+          (ep, elapsed_time, val_ppl, val_ppl))
+    print('-' * 89)
+    if val_loss < best_val_loss:
+        print('Saving better model')
+        best_val_loss = val_loss
+        torch.save(model_.state_dict(), save_path)
+    scheduler.step()
+model_.load_state_dict(torch.load(save_path))
