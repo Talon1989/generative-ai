@@ -7,6 +7,19 @@ import torchvision
 from torch.utils.data import DataLoader, random_split
 
 
+def one_hot_transformation(y: np.array) -> np.array:
+    """
+    :param y: label encoded 1D np.array
+    :return:
+    """
+    assert y.shape[1] is None
+    n_unique = len(np.unique(y))
+    one_hot = np.zeros(shape=[y.shape[0], n_unique])
+    for idx, val in enumerate(y):
+        one_hot[idx, int(val)] = 1
+    return one_hot
+
+
 def covariance_matrix(matrix: np.array):
     mean_vector = np.mean(matrix, axis=0)
     mean_matrix = np.subtract(matrix, mean_vector)
