@@ -1,7 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import tensorflow as tf
-keras = tf.keras
 import torch
 import torchvision
 from torch.utils.data import DataLoader, random_split
@@ -35,9 +33,7 @@ def correlation_matrix(matrix: np.array):
     return relation_matrix / matrix.shape[0]
 
 
-def display_images(
-    images, n=10, size=(20, 3), cmap="gray_r", as_type="float32"
-):
+def display_images(images, n=10, size=(20, 3), cmap="gray_r", as_type="float32"):
     if images.max() > 1.0:  # normalizing the data
         images = images / 255.0
     elif images.min() < 0.0:
@@ -69,8 +65,7 @@ def display_images_torch(
     plt.clf()
 
 
-def display_image_torch(
-    image: torch.Tensor, cmap="gray_r"):
+def display_image_torch(image: torch.Tensor, cmap="gray_r"):
     if image.max() > 1.0:  # normalizing the data
         image = image / 255.0
     elif image.min() < 0.0:
@@ -82,9 +77,9 @@ def display_image_torch(
 
 
 def plot_line(values: np.array, name: str):
-    plt.plot(np.arange(values.shape[0]), values, c='b')
-    plt.xlabel('X')
-    plt.ylabel('Y')
+    plt.plot(np.arange(values.shape[0]), values, c="b")
+    plt.xlabel("X")
+    plt.ylabel("Y")
     plt.title(name)
     plt.show()
     plt.clf()
@@ -94,21 +89,26 @@ def plot_lines(values: np.array, names):
     try:
         values.shape[1]
     except IndexError:
-        print('data is not in the correct format')
+        print("data is not in the correct format")
         return
-    colors = ['b', 'r', 'g', 'k']
+    colors = ["b", "r", "g", "k"]
     for i in range(values.shape[0]):
-        plt.plot(np.arange(values.shape[1]), values[i],
-                 c=colors[i % values.shape[0]], label=names[i])
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.legend(loc='best')
+        plt.plot(
+            np.arange(values.shape[1]),
+            values[i],
+            c=colors[i % values.shape[0]],
+            label=names[i],
+        )
+    plt.xlabel("X")
+    plt.ylabel("Y")
+    plt.legend(loc="best")
     plt.show()
     plt.clf()
 
 
 def tokenize_and_prep(text_data: list):
-
+    import tensorflow as tf
+    keras = tf.keras
     def prep_inputs(text):
         text = tf.expand_dims(text, -1)
         tokenized_sentences = vectorize_layer(text)
@@ -131,3 +131,79 @@ def plot_2D(x, y):
     plt.scatter(x, y, s=1)
     plt.show()
     plt.clf()
+
+
+class ReplayBuffer:
+    def __init__(self, max_size=1_000):
+        self.max_size = max_size
+        self.states, self.actions, self.rewards, self.states_, self.dones = (
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
+
+    def get_buffer_size(self):
+        assert len(self.states) == len(self.actions) == len(self.rewards)
+        return len(self.actions)
+
+    def remember(self, s, a, r, s_, done):
+        if len(self.states) > self.max_size:
+            del self.states[0]
+            del self.actions[0]
+            del self.rewards[0]
+            del self.states_[0]
+            del self.dones[0]
+        self.states.append(s)
+        self.actions.append(a)
+        self.rewards.append(r)
+        self.states_.append(s_)
+        self.dones.append(done)
+
+    def clear(self):
+        self.states, self.actions, self.rewards, self.states_, self.dones = (
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
+
+    def get_buffer(
+        self, batch_size, randomized=True, cleared=False, return_bracket=False
+    ):
+        assert batch_size <= self.max_size + 1
+        indices = np.arange(self.get_buffer_size())
+        if randomized:
+            np.random.shuffle(indices)
+        buffer_states = np.squeeze([self.states[i] for i in indices][0:batch_size])
+        buffer_actions = [self.actions[i] for i in indices][0:batch_size]
+        buffer_rewards = [self.rewards[i] for i in indices][0:batch_size]
+        buffer_states_ = np.squeeze([self.states_[i] for i in indices][0:batch_size])
+        buffer_dones = [self.dones[i] for i in indices][0:batch_size]
+        if cleared:
+            self.clear()
+        if return_bracket:
+            for i in range(batch_size):
+                buffer_actions[i] = np.array(buffer_actions[i])
+                buffer_rewards[i] = np.array([buffer_rewards[i]])
+                buffer_dones[i] = np.array([buffer_dones[i]])
+            return (
+                np.array(buffer_states),
+                np.array(buffer_actions),
+                np.array(buffer_rewards),
+                np.array(buffer_states_),
+                np.array(buffer_dones),
+            )
+            # return tuple(np.array(buffer_states)), tuple(np.array(buffer_actions)), tuple(np.array(buffer_rewards)), tuple(np.array(buffer_states_)), tuple(np.array(buffer_dones))
+        return (
+            np.array(buffer_states),
+            np.array(buffer_actions),
+            np.array(buffer_rewards),
+            np.array(buffer_states_),
+            np.array(buffer_dones),
+        )
+
+    def __len__(self):
+        return len(self.actions)
