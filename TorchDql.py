@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import gym
-from utilities import ReplayBuffer
+from utilities import ReplayBuffer, display_graph
 
 
 env_ = gym.make('CartPole-v1')
@@ -51,7 +51,7 @@ class Agent(nn.Module):
 
 # hardcoded to work with discrete action spaces
 class DQL:
-    def __init__(self, env, hidden_shape:np.array, epsilon_decay=999/1_000,
+    def __init__(self, env, hidden_shape:np.array, epsilon_decay=998/1_000,
                  alpha:float=1/1000, gamma:float=99/100, batch_size:int=64):
         self.env = env
         self.n_s, self.n_a = self.env.observation_space.shape[0], self.env.action_space.n
@@ -60,7 +60,7 @@ class DQL:
         self.buffer = ReplayBuffer(max_size=1_000)
         self.epsilon = 1.
         self.epsilon_decay = epsilon_decay
-        self.main_nn = Agent(self.n_s, hidden_shape, self.n_a)
+        self.main_nn = Agent(self.n_s, hidden_shape, self.n_a).float()
         self.target_nn = copy.deepcopy(self.main_nn)  # = would be in-place
         self.optimizer = torch.optim.Adam(params=self.main_nn.parameters(), lr=alpha)
         self.criterion = nn.MSELoss()
@@ -88,9 +88,23 @@ class DQL:
         states, actions, rewards, states_, dones = self.buffer.get_buffer(
             self.batch_size, randomized=True, cleared=False
         )
-        pass
+        states = torch.tensor(states)
+        actions = torch.tensor(actions).reshape([-1, 1])
+        rewards = torch.tensor(rewards).reshape([-1, 1]).float()
+        states_ = torch.tensor(states_)
+        dones = torch.tensor(dones).reshape([-1, 1])
+        self.main_nn.train()
+        y_pred = torch.gather(input=self.main_nn(states), dim=1, index=actions)
+        # with torch.no_grad():
+        y_pred_next, _ = torch.max(self.target_nn(states_), dim=1)
+        y_pred_next = y_pred_next.reshape([-1, 1])
+        y_hat = rewards + self.gamma * y_pred_next * (1 - dones)
+        loss = self.criterion(y_pred, y_hat)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
-    def train(self, n_episodes=200, graph=True):
+    def train(self, n_episodes=600, graph=False):
         scores, avg_scores = [], []
         for ep in range(1, n_episodes+1):
             s = self.env.reset()[0]
@@ -98,6 +112,7 @@ class DQL:
             while True:
                 a = self.choose_action(s)
                 s_, r, d, t, _ = self.env.step(a)
+                self.store_transition(s, a, r, s_, int(d))
                 score += r
                 if d or t:
                     break
@@ -110,21 +125,38 @@ class DQL:
             if ep % 10 == 0:
                 print('Episode %d | Avg score: %.3f | Epsilon: %.3f'
                       % (ep, avg_scores[-1], self.epsilon))
-            if graph and ep % 100 == 0:
-                plt.scatter(np.arange(len(scores)), scores, c='g', s=1, label='scores')
-                plt.plot(avg_scores, c='b', linewidth=1, label='avg scores')
-                plt.xlabel('episode')
-                plt.ylabel('score')
-                plt.legend(loc='best')
-                plt.title('Episode %d DQL' % ep)
-                plt.show()
-                plt.clf()
+                self.hard_update()
+            if graph and ep % 20 == 0:
+                display_graph(scores, avg_scores, ep)
+                # plt.scatter(np.arange(len(scores)), scores, c='g', s=1, label='scores')
+                # plt.plot(avg_scores, c='b', linewidth=1, label='avg scores')
+                # plt.xlabel('episode')
+                # plt.ylabel('score')
+                # plt.legend(loc='best')
+                # plt.title('Episode %d DQL' % ep)
+                # plt.show()
+                # plt.clf()
+
+    def test_buffer(self):
+        for _ in range(5):
+            s = self.env.reset()[0]
+            a = self.env.action_space.sample()
+            s_, r, d, t, _ = self.env.step(a)
+            self.store_transition(s, a, r, s_, int(d))
+        return self.buffer.get_buffer(
+            batch_size=5, randomized=True, cleared=False
+        )
 
 
-
-
-
-
+dql = DQL(env_, np.array([16, 16, 32, 32, 64, 64]))
+dql.train(2_000)
+# states, actions, rewards, states_, dones = dql.test_buffer()
+#
+# states = torch.tensor(states)
+# actions = torch.tensor(actions).reshape([-1, 1])
+# rewards = torch.tensor(rewards).reshape([-1, 1])
+# states_ = torch.tensor(states_)
+# dones = torch.tensor(dones).reshape([-1, 1])
 
 
 

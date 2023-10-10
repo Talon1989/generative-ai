@@ -1,6 +1,10 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
+# import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('TkAgg')  # this is to deal with a PyCharm - matplolib issue
+# matplotlib.use('Agg')  # this is to deal with a PyCharm - matplolib issue
+import matplotlib.pyplot as plt
 import torchvision
 from torch.utils.data import DataLoader, random_split
 
@@ -127,6 +131,7 @@ def tokenize_and_prep(text_data: list):
 
 
 def plot_2D(x, y):
+    import matplotlib.pyplot as plt
     assert len(x) == len(y)
     plt.scatter(x, y, s=1)
     plt.show()
@@ -207,3 +212,14 @@ class ReplayBuffer:
 
     def __len__(self):
         return len(self.actions)
+
+
+def display_graph(scores, avg_scores, ep):
+    plt.scatter(np.arange(len(scores)), scores, c='g', s=1, label='scores')
+    plt.plot(avg_scores, c='b', linewidth=1, label='avg scores')
+    plt.xlabel('episode')
+    plt.ylabel('score')
+    plt.legend(loc='best')
+    plt.title('Episode %d DQL' % ep)
+    plt.show()
+    plt.clf()
