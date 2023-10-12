@@ -95,8 +95,8 @@ def cosine_diffusion_schedule(diffusion_times):
 
 def offset_cosine_diffusion_schedule(diffusion_times):
     min_signal_rate = torch.tensor(1 / 50)
-    max_signate_rate = torch.tensor(19 / 20)
-    start_angle = torch.acos(max_signate_rate)
+    max_signal_rate = torch.tensor(19 / 20)
+    start_angle = torch.acos(max_signal_rate)
     end_angle = torch.acos(min_signal_rate)
     diffusion_angles = start_angle + diffusion_times * (end_angle - start_angle)
     signal_rates = torch.cos(diffusion_angles)
