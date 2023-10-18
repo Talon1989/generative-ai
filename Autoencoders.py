@@ -19,11 +19,17 @@ class Encoder(keras.Model):
 
     def call(self, inputs, training=None, mask=None):
         x = self.layer_1(inputs)
+        print(x.shape)
         x = self.layer_2(x)
+        print(x.shape)
         x = self.layer_3(x)
+        print(x.shape)
         shape_before_flattening = K.int_shape(x)[1:]
         x = self.flatten(x)
-        return self.encoder_output(x), shape_before_flattening
+        print(x.shape)
+        x = self.encoder_output(x)
+        print(x.shape)
+        return x, shape_before_flattening
 
 
 class Decoder(keras.Model):
@@ -41,11 +47,34 @@ class Decoder(keras.Model):
 
     def call(self, inputs, training=None, mask=None):
         x = self.dense(inputs)
+        print(x.shape)
         x = self.reshape(x)
+        print(x.shape)
         x = self.layer_1(x)
+        print(x.shape)
         x = self.layer_2(x)
+        print(x.shape)
         x = self.layer_3(x)
-        return self.decoder_output(x)
+        print(x.shape)
+        x = self.decoder_output(x)
+        print(x.shape)
+        return x
+
+
+'''
+(2000, 16, 16, 32)
+(2000, 8, 8, 64)
+(2000, 4, 4, 128)
+(2000, 2048)
+(2000, 2)
+
+(2000, 2048)
+(2000, 4, 4, 128)
+(2000, 8, 8, 128)
+(2000, 16, 16, 64)
+(2000, 32, 32, 32)
+(2000, 32, 32, 1)
+'''
 
 
 def create_autoencoder():
