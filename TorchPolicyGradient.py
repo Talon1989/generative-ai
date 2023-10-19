@@ -73,8 +73,8 @@ class PolicyGradientMethod:
         returns = np.array(returns[::-1])
         norm_returns = (returns - np.mean(returns)) / np.std(returns)
         self.nn.train()
-        losses = self._custom_loss(states, actions, norm_returns)
         self.optimizer.zero_grad()
+        losses = self._custom_loss(states, actions, norm_returns)
         losses.backward()
         self.optimizer.step()
 
@@ -112,7 +112,7 @@ class PolicyGradientMethod:
 
 
 pgm = PolicyGradientMethod(env_, np.array([16, 16, 32, 32, 64]))
-
+pgm.train(500, graph=False)
 
 
 

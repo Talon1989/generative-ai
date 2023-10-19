@@ -1,5 +1,9 @@
 import numpy as np
-# import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('TkAgg')
+# matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import time
 import torch
 import torch.nn as nn
 from torchvision import datasets
@@ -10,6 +14,11 @@ from torch.utils.data import DataLoader
 LATENT_SPACE_DIM = 2
 # EN_OUT_DIM = 2048
 EN_OUT_SHAPE = torch.tensor((128, 4, 4))
+MODEL_PATH = '/home/fabio/PycharmProjects/generative-ai/data/models/pytorch_autoencoder.pth'
+
+
+# plt.plot([i**2 for i in range(10)])
+# plt.show()
 
 
 # mnist_dataset = datasets.MNIST(
@@ -140,33 +149,72 @@ print()
 decoder = Decoder()
 # outputs = decoder(latent_space)
 autoencoder = Autoencoder(encoder, decoder)
-optimizer = torch.optim.Adam(params=autoencoder.parameters(), lr=1/1_000)
 
 
-'''
-torch.Size([64, 32, 16, 16])
-torch.Size([64, 64, 8, 8])
-torch.Size([64, 128, 4, 4])
-torch.Size([64, 2048])
-torch.Size([64, 2])
+def run_training(n_epochs=500, save_model=False, show_generation=False):
+    optimizer = torch.optim.Adam(params=autoencoder.parameters(), lr=1/1_000)
+    criterion = nn.BCELoss()
+    for ep in range(1, n_epochs):
+        initial_time = time.time()
+        autoencoder.train()
+        losses = []
+        for images, _ in mnist_dataloader:
+            autoencoder.train()
+            optimizer.zero_grad()
+            predictions = autoencoder(images)
+            loss = criterion(predictions, images)
+            loss.backward()
+            optimizer.step()
+            loss_detached = loss.detach()
+            losses.append(loss_detached)
+            # print('loss: %.3f' % loss_detached)
+        losses_mean, losses_std = np.mean(losses), np.std(losses)
+        print('Episode %d | Losses mean: %.3f | Losses std: %.3f | Elapsed time: %.3f'
+              % (ep, losses_mean, losses_std, time.time() - initial_time))
+        if show_generation:
+            with torch.no_grad():
+                autoencoder.eval()
+                index = np.random.randint(0, len(mnist_dataset))
+                image, _ = mnist_dataset[index]
+                generation = autoencoder(torch.unsqueeze(image, dim=0))
+                generated_image = generation.squeeze().squeeze()
+                og_image = torch.squeeze(image)
 
-torch.Size([64, 2048])
-torch.Size([64, 128, 4, 4])
-torch.Size([64, 128, 7, 7])
-torch.Size([64, 64, 13, 13])
-torch.Size([64, 32, 25, 25])
-torch.Size([64, 1, 25, 25])
-'''
+                fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
+                axes[0].imshow(og_image, cmap='gray')
+                axes[0].set_title('original image')
+                axes[0].axis('off')
+                axes[1].imshow(generated_image, cmap='gray')
+                axes[1].set_title('generated image')
+                axes[1].axis('off')
+
+                plt.show()
+                # plt.clf()
+        if ep % 10 == 0 and save_model:
+            print('\nSaving the model ...')
+            torch.save(obj=autoencoder.state_dict(), f=MODEL_PATH)
+            print('Model saved.\n')
+
+# outputs = autoencoder(images)
+# output = outputs[50].detach().numpy().squeeze()
+# plt.imshow(output, cmap='gray')
+# plt.show()
 
 
+# run_training(n_epochs=100, save_model=True, show_generation=False)
 
 
-
-
-
-
-
-
+trained_autoencoder = Autoencoder(Encoder(), Decoder())
+trained_autoencoder.load_state_dict(torch.load(MODEL_PATH))
+with torch.no_grad():
+    trained_autoencoder.eval()
+    index = np.random.randint(0, len(mnist_dataset))
+    image, label = mnist_dataset[index]
+    generation = trained_autoencoder(torch.unsqueeze(image, dim=0))
+    generated_image = generation.squeeze().squeeze()
+    print(label)
+    plt.imshow(generated_image, cmap='gray')
+    plt.show()
 
 
 
