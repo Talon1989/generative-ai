@@ -202,22 +202,41 @@ def run_training(n_epochs=500, save_model=False, show_generation=False):
 
 
 # run_training(n_epochs=100, save_model=True, show_generation=False)
+#
+# trained_autoencoder = Autoencoder(Encoder(), Decoder())
+# trained_autoencoder.load_state_dict(torch.load(MODEL_PATH))
+# with torch.no_grad():
+#     trained_autoencoder.eval()
+#     index = np.random.randint(0, len(mnist_dataset))
+#     image, label = mnist_dataset[index]
+#     generation = trained_autoencoder(torch.unsqueeze(image, dim=0))
+#     generated_image = generation.squeeze().squeeze()
+#     print(label)
+#     plt.imshow(generated_image, cmap='gray')
+#     plt.show()
 
 
-trained_autoencoder = Autoencoder(Encoder(), Decoder())
-trained_autoencoder.load_state_dict(torch.load(MODEL_PATH))
-with torch.no_grad():
-    trained_autoencoder.eval()
-    index = np.random.randint(0, len(mnist_dataset))
-    image, label = mnist_dataset[index]
-    generation = trained_autoencoder(torch.unsqueeze(image, dim=0))
-    generated_image = generation.squeeze().squeeze()
-    print(label)
-    plt.imshow(generated_image, cmap='gray')
-    plt.show()
+class VariationalEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        en_out_dim = int(torch.prod(EN_OUT_SHAPE))
+        # padding=0 is valid, padding=1 is same
+        self.layer_1 = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=2, padding=1)
+        self.layer_2 = nn.Conv2d(32, 64, kernel_size=(3, 3), stride=2, padding=1)
+        self.layer_3 = nn.Conv2d(64, 128, kernel_size=(3, 3), stride=2, padding=1)
+        self.flatten = nn.Flatten()
+        self.output_mean = nn.Linear(en_out_dim, LATENT_SPACE_DIM)
+        self.output_log_var = nn.Linear(en_out_dim, LATENT_SPACE_DIM)
+        self.relu = nn.ReLU()
 
-
-
+    def forward(self, x):
+        x = self.relu(self.layer_1(x))
+        x = self.relu(self.layer_2(x))
+        x = self.relu(self.layer_3(x))
+        x = self.flatten(x)
+        z_mean = self.output_mean(x)
+        z_log_var = self.output_log_var(x)
+        return z_mean, z_log_var
 
 
 
