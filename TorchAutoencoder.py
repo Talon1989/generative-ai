@@ -284,23 +284,149 @@ class VariationalEncoder(nn.Module):
         z_log_var = self.output_log_var(x)
         return z_mean, z_log_var
 
-    def build_covariance_matrix(self, stds):
+    # def build_covariance_matrix(self, stds):
+    #     n_batches, n_dim = stds.shape
+    #     covariance_matrix = torch.zeros(size=[n_batches, n_dim, n_dim])
+    #     for i in range(n_batches):
+    #         covariance_matrix[i] = torch.diag(stds[i] ** 2)
+    #     return covariance_matrix
+    #
+    # # no reparameterization trick
+    # def sample_z(self, data, training=True):
+    #     if training:
+    #         self.train()
+    #         means, stds = self(data)
+    #     else:
+    #         self.eval()
+    #         with torch.no_grad():
+    #             means, stds = self(data)
+    #     distribution = torch.distributions.MultivariateNormal(
+    #         means, self.build_covariance_matrix(stds))
+    #     z = distribution.sample()
+    #     return z
+    #
+    # def build_eye_covariance_matrix(self, stds):
+    #     n_batches, n_dim = stds.shape
+    #     covariance_matrix = torch.zeros(size=[n_batches, n_dim, n_dim])
+    #     for i in range(n_batches):
+    #         covariance_matrix[i] = torch.eye(n_dim)
+    #     return covariance_matrix
+    #
+    # def sample_z_trick(self, data, training=True):
+    #     if training:
+    #         self.train()
+    #         means, stds = self(data)
+    #     else:
+    #         self.eval()
+    #         with torch.no_grad():
+    #             means, stds = self(data)
+    #     zeros = torch.zeros_like(means)
+    #     distribution = torch.distributions.MultivariateNormal(
+    #         zeros, self.build_eye_covariance_matrix(stds))
+    #     sample = distribution.sample()
+    #     z = means + torch.exp(stds) * sample
+    #     return z
+
+
+class VariationalAutoEncoder(nn.Module):
+    def __init__(self, encoder:nn.Module, decoder:nn.Module, reconstruction_weight=1.):
+        """
+        :param encoder: variational encoder
+        """
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.reconstruction_weight = reconstruction_weight
+        self.reconstruction_criterion = nn.BCELoss()
+        self.optimizer = torch.optim.Adam(params=self.parameters(), lr=1/1_000)
+
+    def build_eye_covariance_matrix(self, stds):
         n_batches, n_dim = stds.shape
         covariance_matrix = torch.zeros(size=[n_batches, n_dim, n_dim])
         for i in range(n_batches):
-            covariance_matrix[i] = torch.diag(stds[i] ** 2)
+            covariance_matrix[i] = torch.eye(n_dim)
         return covariance_matrix
+
+    def sample_z_trick(self, data, training=True):
+        if training:
+            self.train()
+            means, log_stds = self.encoder(data)
+        else:
+            self.eval()
+            with torch.no_grad():
+                means, log_stds = self.encoder(data)
+        zeros = torch.zeros_like(means)
+        distribution = torch.distributions.MultivariateNormal(
+            zeros, self.build_eye_covariance_matrix(log_stds))
+        sample = distribution.sample()
+        z = means + torch.exp(log_stds) * sample
+        return means, log_stds, z
+
+    def forward(self, x):
+        _, _, z = self.sample_z_trick(x)
+        reproduction = self.decoder(z)
+        return reproduction
+
+    def fit(self, n_epochs=200, save_model=False, show_generation=False):
+        for ep in range(1, n_epochs):
+            initial_time = time.time()
+            autoencoder.train()
+            reconstruction_losses, kl_losses, total_losses = [], [], []
+            for images, _ in mnist_dataloader:
+                self.train()
+                self.optimizer.zero_grad()
+                z_means, z_log_stds, z = self.sample_z_trick(images, training=True)
+                reproduction = self.decoder(z)
+                reconstruction_loss = self.reconstruction_weight \
+                                      * self.reconstruction_criterion(reproduction, images)
+                # z_log_vars = 2 * z_log_stds
+                kl_loss = - torch.sum(
+                    1/2 * (1 + 2 * z_log_stds - torch.square(z_means) - torch.exp(2 * z_log_stds)), dim=1
+                ).mean()
+                total_loss = reconstruction_loss + kl_loss
+                total_loss.backward()
+                self.optimizer.step()
+                reconstruction_losses.append(reconstruction_loss.detach().numpy())
+                kl_losses.append(kl_loss.detach().numpy())
+                total_losses.append(total_loss.detach().numpy())
+                print(reconstruction_losses[-1])
+                print(kl_losses[-1])
+            rec_mean, kl_mean = np.mean(reconstruction_losses), np.mean(kl_losses)
+            total_mean = np.mean(kl_losses)
+            print('Episode %d | Rec losses mean: %.3f | KL losses mean: %.3f | Total loss: %.3f'
+                  % (ep, rec_mean, kl_mean, total_mean))
+            if show_generation:
+                with torch.no_grad():
+                    self.eval()
+                    index = np.random.randint(0, len(mnist_dataset))
+                    image, _ = mnist_dataset[index]
+                    generation = self(torch.unsqueeze(image, dim=0))
+                    generated_image = generation.squeeze().squeeze()
+                    og_image = torch.squeeze(image)
+
+                    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
+                    axes[0].imshow(og_image, cmap='gray')
+                    axes[0].set_title('original image')
+                    axes[0].axis('off')
+                    axes[1].imshow(generated_image, cmap='gray')
+                    axes[1].set_title('generated image')
+                    axes[1].axis('off')
+
+                    plt.show()
+                    # plt.clf()
+            if ep % 10 == 0 and save_model:
+                print('\nSaving the model ...')
+                torch.save(obj=self.state_dict(), f=MODEL_PATH)
+                print('Model saved.\n')
 
 
 v_encoder = VariationalEncoder()
-z_means, z_stds = v_encoder(images[0:3])
-z_cov_matrix = v_encoder.build_covariance_matrix(z_stds)
-mvn = torch.distributions.MultivariateNormal(z_means, z_cov_matrix)
-z = mvn.sample()
-# covariance_matrix = torch.zeros(3, 8, 8)
-# for batch in range(3):
-#     covariance_matrix[batch] = torch.diag(z_stds[batch] ** 2)
-# mvn = torch.distributions.MultivariateNormal(z_means, covariance_matrix)
+decoder = Decoder()
+vae = VariationalAutoEncoder(v_encoder, decoder)
+# z_means, z_stds = v_encoder(images[0:3])
+# z_cov_matrix = v_encoder.build_covariance_matrix(z_stds)
+# mvn = torch.distributions.MultivariateNormal(z_means, z_cov_matrix)
+# z = mvn.sample()
 
 
 
