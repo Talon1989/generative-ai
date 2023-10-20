@@ -11,7 +11,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 
 
-LATENT_SPACE_DIM = 2
+LATENT_SPACE_DIM = 8
 # EN_OUT_DIM = 2048
 EN_OUT_SHAPE = torch.tensor((128, 4, 4))
 MODEL_PATH = '/home/fabio/PycharmProjects/generative-ai/data/models/pytorch_autoencoder.pth'
@@ -88,7 +88,6 @@ encoder = Encoder()
 
 images, labels = next(iter(mnist_dataloader))
 # _, s_b_f = encoder(images)
-latent_space = encoder(images)
 
 
 class Decoder(nn.Module):
@@ -138,22 +137,68 @@ class Autoencoder(nn.Module):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
+        self.optimizer = torch.optim.Adam(params=self.parameters(), lr=1 / 1_000)
+        # self.criterion = nn.MSELoss()
+        self.criterion = nn.BCELoss()
 
     def forward(self, x):
         z = self.encoder(x)
         reproduction = self.decoder(z)
         return reproduction
 
+    def fit(self, n_epochs=500, save_model=False, show_generation=False):
+        for ep in range(1, n_epochs):
+            initial_time = time.time()
+            autoencoder.train()
+            losses = []
+            for images, _ in mnist_dataloader:
+                self.train()
+                self.optimizer.zero_grad()
+                predictions = self(images)
+                loss = self.criterion(predictions, images)
+                loss.backward()
+                self.optimizer.step()
+                loss_detached = loss.detach()
+                losses.append(loss_detached)
+                # print('loss: %.3f' % loss_detached)
+            losses_mean, losses_std = np.mean(losses), np.std(losses)
+            print('Episode %d | Losses mean: %.3f | Losses std: %.3f | Elapsed time: %.3f'
+                  % (ep, losses_mean, losses_std, time.time() - initial_time))
+            if show_generation:
+                with torch.no_grad():
+                    self.eval()
+                    index = np.random.randint(0, len(mnist_dataset))
+                    image, _ = mnist_dataset[index]
+                    generation = self(torch.unsqueeze(image, dim=0))
+                    generated_image = generation.squeeze().squeeze()
+                    og_image = torch.squeeze(image)
+
+                    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
+                    axes[0].imshow(og_image, cmap='gray')
+                    axes[0].set_title('original image')
+                    axes[0].axis('off')
+                    axes[1].imshow(generated_image, cmap='gray')
+                    axes[1].set_title('generated image')
+                    axes[1].axis('off')
+
+                    plt.show()
+                    # plt.clf()
+            if ep % 10 == 0 and save_model:
+                print('\nSaving the model ...')
+                torch.save(obj=self.state_dict(), f=MODEL_PATH)
+                print('Model saved.\n')
+
 
 print()
 decoder = Decoder()
+# latent_space = encoder(images)
 # outputs = decoder(latent_space)
 autoencoder = Autoencoder(encoder, decoder)
 
 
 def run_training(n_epochs=500, save_model=False, show_generation=False):
     optimizer = torch.optim.Adam(params=autoencoder.parameters(), lr=1/1_000)
-    criterion = nn.BCELoss()
+    criterion = nn.MSELoss()
     for ep in range(1, n_epochs):
         initial_time = time.time()
         autoencoder.train()
@@ -201,8 +246,9 @@ def run_training(n_epochs=500, save_model=False, show_generation=False):
 # plt.show()
 
 
-# run_training(n_epochs=100, save_model=True, show_generation=False)
-#
+# run_training(n_epochs=100, save_model=False, show_generation=False)
+# autoencoder.fit()
+
 # trained_autoencoder = Autoencoder(Encoder(), Decoder())
 # trained_autoencoder.load_state_dict(torch.load(MODEL_PATH))
 # with torch.no_grad():
@@ -238,15 +284,23 @@ class VariationalEncoder(nn.Module):
         z_log_var = self.output_log_var(x)
         return z_mean, z_log_var
 
+    def build_covariance_matrix(self, stds):
+        n_batches, n_dim = stds.shape
+        covariance_matrix = torch.zeros(size=[n_batches, n_dim, n_dim])
+        for i in range(n_batches):
+            covariance_matrix[i] = torch.diag(stds[i] ** 2)
+        return covariance_matrix
 
 
-
-
-
-
-
-
-
+v_encoder = VariationalEncoder()
+z_means, z_stds = v_encoder(images[0:3])
+z_cov_matrix = v_encoder.build_covariance_matrix(z_stds)
+mvn = torch.distributions.MultivariateNormal(z_means, z_cov_matrix)
+z = mvn.sample()
+# covariance_matrix = torch.zeros(3, 8, 8)
+# for batch in range(3):
+#     covariance_matrix[batch] = torch.diag(z_stds[batch] ** 2)
+# mvn = torch.distributions.MultivariateNormal(z_means, covariance_matrix)
 
 
 
