@@ -102,10 +102,10 @@ model_checkpoint_callback = keras.callbacks.ModelCheckpoint(
 )
 tensorboard_callback = keras.callbacks.TensorBoard(log_dir="./logs")
 
-# vae.fit(
-#     X_train, epochs=5, batch_size=100, shuffle=True, validation_data=[X_test, X_test],
-#     callbacks=[model_checkpoint_callback, tensorboard_callback]
-# )
+vae.fit(
+    X_train, epochs=5, batch_size=100, shuffle=True, validation_data=[X_test, X_test],
+    # callbacks=[model_checkpoint_callback, tensorboard_callback]
+)
 # vae.save('./data/vae')
 # encoder.save('./data/encoder')
 # decoder.save('./data/decoder')

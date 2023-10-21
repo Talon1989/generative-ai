@@ -371,7 +371,8 @@ class VariationalAutoEncoder(nn.Module):
         for ep in range(1, n_epochs):
             initial_time = time.time()
             autoencoder.train()
-            reconstruction_losses, kl_losses, total_losses = [], [], []
+            # reconstruction_losses, kl_losses, total_losses = [], [], []
+            reconstruction_losses, kl_losses, total_losses = 0, 0, 0
             for images, _ in mnist_dataloader:
                 self.train()
                 self.optimizer.zero_grad()
@@ -379,22 +380,28 @@ class VariationalAutoEncoder(nn.Module):
                 reproduction = self.decoder(z)
                 reconstruction_loss = self.reconstruction_weight \
                                       * self.reconstruction_criterion(reproduction, images)
-                # z_log_vars = 2 * z_log_stds
-                kl_loss = - torch.sum(
-                    1/2 * (1 + 2 * z_log_stds - torch.square(z_means) - torch.exp(2 * z_log_stds)), dim=1
+                # kl_loss = - torch.sum(
+                #     1/2 * (1 + 2 * z_log_stds - torch.square(z_means) - torch.exp(2 * z_log_stds)), dim=1
+                # ).mean()
+                z_log_vars = 2 * z_log_stds
+                kl_loss = torch.sum(
+                    -1/2 * (1 + z_log_vars - torch.square(z_means) - torch.exp(z_log_vars)), dim=1
                 ).mean()
                 total_loss = reconstruction_loss + kl_loss
                 total_loss.backward()
                 self.optimizer.step()
-                reconstruction_losses.append(reconstruction_loss.detach().numpy())
-                kl_losses.append(kl_loss.detach().numpy())
-                total_losses.append(total_loss.detach().numpy())
-                print(reconstruction_losses[-1])
-                print(kl_losses[-1])
-            rec_mean, kl_mean = np.mean(reconstruction_losses), np.mean(kl_losses)
-            total_mean = np.mean(kl_losses)
-            print('Episode %d | Rec losses mean: %.3f | KL losses mean: %.3f | Total loss: %.3f'
-                  % (ep, rec_mean, kl_mean, total_mean))
+                # reconstruction_losses.append(reconstruction_loss.detach().numpy())
+                # kl_losses.append(kl_loss.detach().numpy())
+                # total_losses.append(total_loss.detach().numpy())
+                reconstruction_losses += reconstruction_loss.detach().numpy()
+                kl_losses += kl_loss.detach().numpy()
+                # print(reconstruction_losses[-1])
+                # print(kl_losses[-1])
+            total_losses = reconstruction_losses + kl_losses
+            # rec_mean, kl_mean = np.mean(reconstruction_losses), np.mean(kl_losses)
+            # total_mean = np.mean(total_losses)
+            print('Episode %d | Rec Losses: %.4f | KL Losses: %.5f | Total Losses: %.4f'
+                  % (ep, reconstruction_losses, kl_losses, total_losses))
             if show_generation:
                 with torch.no_grad():
                     self.eval()
@@ -416,7 +423,7 @@ class VariationalAutoEncoder(nn.Module):
                     # plt.clf()
             if ep % 10 == 0 and save_model:
                 print('\nSaving the model ...')
-                torch.save(obj=self.state_dict(), f=MODEL_PATH)
+                torch.save(obj=self.state_dict(), f=VAE_PATH)
                 print('Model saved.\n')
 
 
@@ -427,6 +434,8 @@ vae = VariationalAutoEncoder(v_encoder, decoder)
 # z_cov_matrix = v_encoder.build_covariance_matrix(z_stds)
 # mvn = torch.distributions.MultivariateNormal(z_means, z_cov_matrix)
 # z = mvn.sample()
+VAE_PATH = '/home/fabio/PycharmProjects/generative-ai/data/models/pytorch_vae.pth'
+vae.fit(save_model=True)
 
 
 
