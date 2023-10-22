@@ -29,7 +29,7 @@ class Reshape(nn.Module):
 
 LEGO_PATH = '/home/fabio/datasets/lego-brick-images/'
 LATENT_DIMS = 64
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 
 
 lego_transform = transforms.Compose([
@@ -159,7 +159,13 @@ class GenerativeAdversarialNetwork:
                 d_fake_preds = self.discriminator(generated_images)
                 fake_labels = torch.zeros_like(d_fake_preds)
                 d_real_loss = self.criterion(d_real_preds, real_labels)
-                d_fake_loss = self.criterion(d_fake_preds, fake_labels)
+                try:
+                    d_fake_loss = self.criterion(d_fake_preds, fake_labels)
+                except RuntimeError:
+                    print('Runtime Error')
+                    print('discriminator prediction of generated data:')
+                    print(d_fake_preds.squeeze())
+                    return
                 d_loss = (d_real_loss + d_fake_loss) / 2
                 d_loss.backward()
                 self.d_optimizer.step()
@@ -176,6 +182,88 @@ class GenerativeAdversarialNetwork:
                 d_losses.append(d_loss.detach().numpy())
                 g_losses.append(g_loss.detach().numpy())
 
+
+            d_loss_mean = float(np.mean(d_losses))
+            g_loss_mean = float(np.mean(g_losses))
+            print('Epoch %d | d loss: %.4f | g loss: %.4f' % (ep, d_loss_mean, g_loss_mean))
+
+
+class WassersteinGenerativeAdversarialNetwork:
+    def __init__(self,discriminator:nn.Module, generator:nn.Module,
+                 l_constraint:float=1., d_steps:int=3, g_p_weight:float=10.):
+        self.discriminator = discriminator
+        self.d_optimizer = torch.optim.Adam(
+            params=self.discriminator.parameters(), lr=1/5_000)
+        self.generator = generator
+        self.g_optimizer = torch.optim.Adam(
+            params=self.generator.parameters(), lr=1/5_000)
+        self.criterion = nn.BCELoss()
+        self.l_constraint = l_constraint
+        self.d_steps = d_steps
+        self.g_p_weight = g_p_weight
+
+    def gradient_penalty(self, real_data:torch.Tensor, fake_data:torch.Tensor):
+        batch_size = real_data.shape[0]
+        alpha = torch.randn(batch_size, 1, 1, 1)  # sampled from standard gaussian
+        difference = fake_data - real_data
+        interpolated_data = real_data + alpha * difference
+        interpolated_data.requires_grad_(True)
+        predictions = self.discriminator(interpolated_data)
+        grads = torch.autograd.grad(
+            outputs=predictions, inputs=interpolated_data,
+            grad_outputs=torch.ones_like(predictions), create_graph=True
+        )[0]
+        norm = torch.sqrt(torch.sum(grads ** 2, dim=[1, 2, 3]))  # l2
+        # avg square distance between l2 and l-constraint
+        grad_penalty = torch.mean((norm - self.l_constraint) ** 2)
+        return grad_penalty
+
+    def fit(self, n_epochs=500, dataloader=mnist_dataloader, save_model=False):
+
+        for ep in range(1, n_epochs+1):
+            d_losses, g_losses = [], []
+
+            for images, _ in dataloader:
+
+                self.discriminator.train()
+                self.generator.train()
+
+                # computing discriminator gradients
+                self.d_optimizer.zero_grad()
+                self.g_optimizer.zero_grad()
+                d_w_loss = torch.tensor(0.)
+                for _ in range(self.d_steps):
+                    with torch.no_grad():
+                        distribution = torch.distributions.Normal(0, 1)
+                        latent_vectors = distribution.sample([images.shape[0], LATENT_DIMS])
+                        generated_images = self.generator(latent_vectors)
+                    d_real_preds = self.discriminator(images)
+                    d_fake_preds = self.discriminator(generated_images)
+                    wasserstein_loss = torch.mean(d_fake_preds - d_real_preds)
+                    grad_penalty = self.gradient_penalty(images, generated_images)
+                    d_loss = wasserstein_loss + self.g_p_weight * grad_penalty
+                    d_loss.backward()
+                    self.d_optimizer.step()
+                    d_w_loss += d_loss
+
+                # computing generator gradients
+                self.d_optimizer.zero_grad()
+                self.g_optimizer.zero_grad()
+                with torch.no_grad():
+                    distribution = torch.distributions.Normal(0, 1)
+                    latent_vectors = distribution.sample([images.shape[0], LATENT_DIMS])
+                generated_images = self.generator(latent_vectors)
+                d_fake_preds = self.discriminator(generated_images)
+                g_loss = torch.mean(d_fake_preds)
+                g_loss.backward()
+                self.g_optimizer.step()
+
+                print(d_w_loss)
+                print(g_loss)
+
+                d_losses.append(d_w_loss.detach().numpy())
+                g_losses.append(g_loss.detach().numpy())
+
             d_loss_mean = float(np.mean(d_losses))
             g_loss_mean = float(np.mean(g_losses))
             print('Epoch %d | d loss: %.4f | g loss: %.4f' % (ep, d_loss_mean, g_loss_mean))
@@ -190,10 +278,19 @@ g = Generator(latent_dims=LATENT_DIMS)
 # plt.imshow(gen_image, cmap='gray')
 # plt.axis('off')
 # plt.show()
+
+
 gan = GenerativeAdversarialNetwork(d, g)
-gan.fit()
+# gan.fit()
 
 
+wgan = WassersteinGenerativeAdversarialNetwork(d, g, l_constraint=1.)
+# images, _ = next(iter(mnist_dataloader))
+# images = images[0:3]
+# distribution = torch.distributions.Normal(0, 1)
+# latent_vectors = distribution.sample([images.shape[0], LATENT_DIMS])
+# generations = wgan.generator(latent_vectors)
+wgan.fit()
 
 
 
