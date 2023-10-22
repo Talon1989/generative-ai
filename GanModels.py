@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from keras.backend import ones_like
-from mkl_random import rand
+# from mkl_random import rand
 
 keras = tf.keras
 
@@ -78,8 +78,12 @@ class Generator(keras.models.Model):
     def call(self, inputs, training=False):
         # x = self.input_layer(inputs)
         # x = self.reshape(x)
+        print(inputs.shape)
         x = self.reshape(inputs)
+        print(x.shape)
         x = self.layer_1(x, training=training)
+        print(x.shape)
+        print()
         x = self.batch_norm_1(x, training=training)
         x = self.leaky_relu_1(x, training=training)
         x = self.layer_2(x, training=training)

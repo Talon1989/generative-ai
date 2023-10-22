@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-import tensorflow_datasets as tfds
+# import tensorflow_datasets as tfds
 keras = tf.keras
 import keras.backend as K
 from GanModels import Discriminator
@@ -22,7 +22,7 @@ N_EPOCHS = 5
 
 
 train_data = keras.utils.image_dataset_from_directory(
-    '/home/talon/datasets/lego-brick-images',
+    '/home/fabio/datasets/lego-brick-images/',
     labels=None,
     color_mode='grayscale',  # 1 channel
     image_size=[64, 64],
