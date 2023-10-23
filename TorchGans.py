@@ -74,12 +74,12 @@ mnist_dataloader = DataLoader(dataset=mnist_dataset, batch_size=BATCH_SIZE, shuf
 class Discriminator(nn.Module):
     def __init__(self, n_channels=1):
         super().__init__()
-        self.conv_1 = nn.Conv2d(n_channels, 64, kernel_size=(4, 4), stride=2, padding=1)
-        self.conv_2 = nn.Conv2d(64, 128, kernel_size=(4, 4), stride=2, padding=1)
-        self.conv_3 = nn.Conv2d(128, 256, kernel_size=(4, 4), stride=2, padding=1)
-        self.conv_4 = nn.Conv2d(256, 1, kernel_size=(4, 4), stride=1, padding=0)
-        self.batch_norm_2 = nn.BatchNorm2d(128, momentum=9/10)
-        self.batch_norm_3 = nn.BatchNorm2d(256, momentum=9/10)
+        self.conv_1 = nn.Conv2d(n_channels, 64, kernel_size=(4, 4), stride=2, padding=1).double()
+        self.conv_2 = nn.Conv2d(64, 128, kernel_size=(4, 4), stride=2, padding=1).double()
+        self.conv_3 = nn.Conv2d(128, 256, kernel_size=(4, 4), stride=2, padding=1).double()
+        self.conv_4 = nn.Conv2d(256, 1, kernel_size=(4, 4), stride=1, padding=0).double()
+        self.batch_norm_2 = nn.BatchNorm2d(128, momentum=9/10).double()
+        self.batch_norm_3 = nn.BatchNorm2d(256, momentum=9/10).double()
         self.swish = Swish()
         self.leaky_relu = nn.LeakyReLU(negative_slope=1/5)
         self.sigmoid = nn.Sigmoid()
@@ -87,6 +87,7 @@ class Discriminator(nn.Module):
         self.flatten = nn.Flatten()
 
     def forward(self, x:torch.Tensor):
+        x = x.double()
         x = self.swish(self.conv_1(x))
         x = self.dropout(x)
         x = self.swish(self.conv_2(x))
@@ -96,7 +97,7 @@ class Discriminator(nn.Module):
         x = self.batch_norm_3(x)
         x = self.dropout(x)
         x = self.sigmoid(self.conv_4(x))
-        x = self.flatten(x)
+        x = self.flatten(x).double()
         return x
 
 
@@ -182,7 +183,6 @@ class GenerativeAdversarialNetwork:
                 d_losses.append(d_loss.detach().numpy())
                 g_losses.append(g_loss.detach().numpy())
 
-
             d_loss_mean = float(np.mean(d_losses))
             g_loss_mean = float(np.mean(g_losses))
             print('Epoch %d | d loss: %.4f | g loss: %.4f' % (ep, d_loss_mean, g_loss_mean))
@@ -225,6 +225,7 @@ class WassersteinGenerativeAdversarialNetwork:
 
             for images, _ in dataloader:
 
+                images = images.to(torch.float64)
                 self.discriminator.train()
                 self.generator.train()
 
@@ -239,12 +240,21 @@ class WassersteinGenerativeAdversarialNetwork:
                         generated_images = self.generator(latent_vectors)
                     d_real_preds = self.discriminator(images)
                     d_fake_preds = self.discriminator(generated_images)
-                    wasserstein_loss = torch.mean(d_fake_preds - d_real_preds)
-                    grad_penalty = self.gradient_penalty(images, generated_images)
-                    d_loss = wasserstein_loss + self.g_p_weight * grad_penalty
+                    if not torch.any(torch.isnan(d_fake_preds)):
+                        wasserstein_loss = torch.mean(d_fake_preds - d_real_preds)
+                        grad_penalty = self.gradient_penalty(images, generated_images)
+                        d_loss = wasserstein_loss + self.g_p_weight * grad_penalty
+                    else:
+                        print('Discriminator real predictions')
+                        print(d_real_preds)
+                        print('Discriminator fake predictions')
+                        print(d_fake_preds)
+                        return
                     d_loss.backward()
                     self.d_optimizer.step()
                     d_w_loss += d_loss
+
+                    print(d_w_loss)
 
                 # computing generator gradients
                 self.d_optimizer.zero_grad()
@@ -258,11 +268,18 @@ class WassersteinGenerativeAdversarialNetwork:
                 g_loss.backward()
                 self.g_optimizer.step()
 
-                print(d_w_loss)
-                print(g_loss)
+                # print(d_w_loss)
+                # print(g_loss)
 
                 d_losses.append(d_w_loss.detach().numpy())
                 g_losses.append(g_loss.detach().numpy())
+
+            # hardcoded path
+            if ep % 2 == 0 and save_model:
+                print('Saving generator model...')
+                torch.save(obj=self.generator.state_dict(),
+                           f='/home/fabio/PycharmProjects/generative-ai/data/models/pytorch_WGAN.pth')
+                print('Model saved.')
 
             d_loss_mean = float(np.mean(d_losses))
             g_loss_mean = float(np.mean(g_losses))
@@ -280,7 +297,7 @@ g = Generator(latent_dims=LATENT_DIMS)
 # plt.show()
 
 
-gan = GenerativeAdversarialNetwork(d, g)
+# gan = GenerativeAdversarialNetwork(d, g)
 # gan.fit()
 
 
@@ -290,7 +307,7 @@ wgan = WassersteinGenerativeAdversarialNetwork(d, g, l_constraint=1.)
 # distribution = torch.distributions.Normal(0, 1)
 # latent_vectors = distribution.sample([images.shape[0], LATENT_DIMS])
 # generations = wgan.generator(latent_vectors)
-wgan.fit()
+wgan.fit(save_model=True)
 
 
 
