@@ -144,7 +144,7 @@ class CustomLSTM(nn.Module):
         x = self.embedding(x)
         print(x.shape)
         x, _ = self.lstm(x)
-        # x, _ = self.lstm(x.view(len(x), 1, -1))
+        # x, _ = self.lstm(z.view(len(x), 1, -1))
         print(x.shape)
         x = self.a_softmax(self.outputs(x))
         print(x.shape)
@@ -152,7 +152,7 @@ class CustomLSTM(nn.Module):
 
 
 lstm = CustomLSTM()
-x = lstm(a[0:2])  # shape is fucked up
+output = lstm(a[0:2])  # shape is fucked up
 
 
 
