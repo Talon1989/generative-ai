@@ -92,7 +92,7 @@ def tokenize_and_prep_old(text_data: list):
     return dataloader, list(vocab.stoi.keys())
 
 
-def tokenize_and_prep(text_data: list):
+def tokenize_and_prep(text_data: list, max_seq_length=128):
     from torch.nn.utils.rnn import pad_sequence
     from collections import Counter
     tokenizer = get_tokenizer('basic_english')
@@ -105,7 +105,9 @@ def tokenize_and_prep(text_data: list):
         specials=['<unk>', '<pad>', '<bos>', '<eos>']
     )
     data = [
-        torch.tensor([vocab[token] for token in tokenizer(item)], dtype=torch.long)
+        torch.tensor(
+            [vocab[token] for token in tokenizer(item)[:max_seq_length]],
+            dtype=torch.long)
         for item in text_data
     ]
     def prep_inputs(d):
@@ -116,15 +118,41 @@ def tokenize_and_prep(text_data: list):
     return dataloader, list(vocab.stoi.keys())
 
 
-train_dataloader, vocabulary = tokenize_and_prep(text_data)
+text_dataloader, vocabulary = tokenize_and_prep(text_data)
+a, b = next(iter(text_dataloader))
 
 
+# DICTIONARY_SIZE = 10_000
+EMBEDDED_VECTOR_DIM = 64
 
 
+class CustomLSTM(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.embedding = nn.Embedding(len(vocabulary), EMBEDDED_VECTOR_DIM)
+        self.lstm = nn.LSTM(
+            input_size=EMBEDDED_VECTOR_DIM,
+            hidden_size=128,
+            num_layers=2
+        )
+        self.outputs = nn.Linear(128, len(vocabulary))
+        self.a_softmax = nn.Softmax(dim=1)
+
+    def forward(self, x):
+        print(x.shape)
+        x = self.embedding(x)
+        print(x.shape)
+        x, _ = self.lstm(x)
+        # x, _ = self.lstm(x.view(len(x), 1, -1))
+        print(x.shape)
+        x = self.a_softmax(self.outputs(x))
+        print(x.shape)
+        return x
 
 
-
-
+lstm = CustomLSTM()
+x = lstm(a[0:2])  # shape is fucked up
 
 
 
