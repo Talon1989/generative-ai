@@ -128,8 +128,14 @@ EMBEDDED_VECTOR_DIM = 64
 
 class CustomLSTM(nn.Module):
 
+    """
+    for each input token, the model outputs a probability distribution
+    over all possible next tokens in vocabulary
+    """
+
     def __init__(self):
         super().__init__()
+        # tokens are passed through an embedding layer to convert them into dense vectors
         self.embedding = nn.Embedding(len(vocabulary), EMBEDDED_VECTOR_DIM)
         self.lstm = nn.LSTM(
             input_size=EMBEDDED_VECTOR_DIM,
@@ -137,17 +143,12 @@ class CustomLSTM(nn.Module):
             num_layers=2
         )
         self.outputs = nn.Linear(128, len(vocabulary))
-        self.a_softmax = nn.Softmax(dim=1)
+        self.a_softmax = nn.Softmax(dim=-1)
 
     def forward(self, x):
-        print(x.shape)
         x = self.embedding(x)
-        print(x.shape)
         x, _ = self.lstm(x)
-        # x, _ = self.lstm(z.view(len(x), 1, -1))
-        print(x.shape)
         x = self.a_softmax(self.outputs(x))
-        print(x.shape)
         return x
 
 
@@ -155,6 +156,7 @@ lstm = CustomLSTM()
 output = lstm(a[0:2])  # shape is fucked up
 
 
+# embedder = nn.Embedding(len(vocabulary), 4)
 
 
 

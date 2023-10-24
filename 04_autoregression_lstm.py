@@ -154,11 +154,11 @@ model_checkpoint_callback = keras.callbacks.ModelCheckpoint(
 # TRAINING
 
 
-# lstm.fit(
-#     train_ds, epochs=25, verbose=1,
-#     callbacks=[model_checkpoint_callback, TextGenerator(vocabulary)]
-# )
-# lstm.save('./data/lstm_models/lstm')
+lstm.fit(
+    train_ds, epochs=25, verbose=1,
+    callbacks=[model_checkpoint_callback, TextGenerator(vocabulary)]
+)
+lstm.save('./data/lstm_models/lstm')
 
 
 
