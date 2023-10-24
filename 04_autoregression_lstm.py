@@ -13,7 +13,7 @@ from utilities import *
 # recipe_data = dataframe_recipe_data.to_dict('records')
 
 
-with open("../global_data/epirecipes/full_format_recipes.json") as json_data:
+with open("/home/fabio/datasets/epirecipes/full_format_recipes.json") as json_data:
     recipe_data = json.load(json_data)
 filtered_data = [
     "Recipe for " + x["title"] + "| " + " ".join(x["directions"])
@@ -154,11 +154,11 @@ model_checkpoint_callback = keras.callbacks.ModelCheckpoint(
 # TRAINING
 
 
-lstm.fit(
-    train_ds, epochs=25, verbose=1,
-    callbacks=[model_checkpoint_callback, TextGenerator(vocabulary)]
-)
-lstm.save('./data/lstm_models/lstm')
+# lstm.fit(
+#     train_ds, epochs=25, verbose=1,
+#     callbacks=[model_checkpoint_callback, TextGenerator(vocabulary)]
+# )
+# lstm.save('./data/lstm_models/lstm')
 
 
 

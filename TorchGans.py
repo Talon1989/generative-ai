@@ -254,7 +254,7 @@ class WassersteinGenerativeAdversarialNetwork:
                     self.d_optimizer.step()
                     d_w_loss += d_loss
 
-                    print(d_w_loss)
+                    # print(d_w_loss)
 
                 # computing generator gradients
                 self.d_optimizer.zero_grad()
@@ -301,7 +301,7 @@ g = Generator(latent_dims=LATENT_DIMS)
 # gan.fit()
 
 
-wgan = WassersteinGenerativeAdversarialNetwork(d, g, l_constraint=1.)
+wgan = WassersteinGenerativeAdversarialNetwork(d, g, l_constraint=1., d_steps=1)
 # images, _ = next(iter(mnist_dataloader))
 # images = images[0:3]
 # distribution = torch.distributions.Normal(0, 1)
