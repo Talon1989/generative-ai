@@ -119,11 +119,12 @@ def tokenize_and_prep(text_data: list, max_seq_length=128):
 
 
 text_dataloader, vocabulary = tokenize_and_prep(text_data)
-a, b = next(iter(text_dataloader))
+a_, b_ = next(iter(text_dataloader))
 
 
 # DICTIONARY_SIZE = 10_000
 EMBEDDED_VECTOR_DIM = 64
+SAVE_PATH = '/home/fabio/PycharmProjects/generative-ai/data/models/lstm.pth'
 
 
 class CustomLSTM(nn.Module):
@@ -144,25 +145,54 @@ class CustomLSTM(nn.Module):
         )
         self.outputs = nn.Linear(128, len(vocabulary))
         self.a_softmax = nn.Softmax(dim=-1)
+        self.optimizer = torch.optim.Adam(params=self.parameters(), lr=1/1_000)
+        self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, x):
         x = self.embedding(x)
         x, _ = self.lstm(x)
-        x = self.a_softmax(self.outputs(x))
+        # x = self.a_softmax(self.outputs(x))
+        x = self.outputs(x)  # softmax is not necessary for usage with nn.CrossEntropyLoss()
         return x
+
+    def fit(self, n_epochs, dataloader, graph=False, save_model=False):
+        avg_losses = []
+        for ep in range(1, n_epochs + 1):
+            cumulative_losses = []
+            for a, b in dataloader:
+                self.optimizer.zero_grad()
+                self.train()
+                b = b.view(-1)  # shape=[batch * seq_len]
+                predictions = self(a)  # shape=[batch, seq_len, n_dict_tokens]
+                predictions = predictions.view(-1, predictions.shape[-1])  # shape=[batch * seq_len, n_dict_tokens]
+                loss = self.criterion(predictions, b)
+                loss.backward()
+                self.optimizer.step()
+                print(loss)
+                cumulative_losses.append(loss.detach().numpy())
+            avg_losses.append(np.sum(cumulative_losses) / len(cumulative_losses))
+            print('Ep %d | avg losses: %.4f' % (ep, avg_losses[-1]))
+            if ep % 10 and graph:
+                pass
+            if ep % 2 and save_model:
+                print('\nSaving model.')
+                torch.save(self.state_dict(), PATH)
+                print('Model saved.\n')
 
 
 lstm = CustomLSTM()
-output = lstm(a[0:2])  # shape is fucked up
+# outputs = lstm(a_)
+lstm.fit(n_epochs=10, dataloader=text_dataloader)
 
 
-# embedder = nn.Embedding(len(vocabulary), 4)
+# preds = torch.argmax(output, dim=-1)
 
 
-
-
-
-
+# criterion = nn.CrossEntropyLoss()
+#
+#
+# preds = outputs.view(-1, outputs.shape[-1])
+# targets = b_.view(-1)
 
 
 
