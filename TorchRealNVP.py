@@ -79,6 +79,7 @@ class RealNVP(nn.Module):
 
         log_det_inv = 0
         direction = -1 if training else 1
+        output = None
 
         for i in range(len(self.coupling_layers))[::direction]:
 
@@ -97,7 +98,7 @@ class RealNVP(nn.Module):
             ) + x_masked
             log_det_inv = log_det_inv + (torch.sum(s, dim=-1) * gate)
 
-            return output, log_det_inv
+        return output, log_det_inv
 
     def log_loss(self, x):
         output, log_det = self(x, training=True)
@@ -115,8 +116,12 @@ def fit(model, optim, data, n_epochs=500):
     for ep in range(1, n_epochs+1):
         optim.zero_grad()
         model.train()
-        loss = model.log_loss(data)
+        # loss = model.log_loss(data)
+        output, log_det = model(data, training=True)
+        log_likelihood = model.standard_gaussian.log_prob(output) + log_det
+        loss = torch.mean(-log_likelihood)
         loss.backward(retain_graph=True)  # need this for iterating through nn.ModuleList()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # gradient clipping
         optim.step()
         losses.append(loss.detach().numpy())
         print('Episode %d | loss: %.4f' % (ep, losses[-1]))
