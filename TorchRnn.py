@@ -147,11 +147,12 @@ class CustomLSTM(nn.Module):
         self.a_softmax = nn.Softmax(dim=-1)
         self.optimizer = torch.optim.Adam(params=self.parameters(), lr=1/1_000)
         self.criterion = nn.CrossEntropyLoss()
+        # self.criterion = nn.NLLLoss()
 
     def forward(self, x):
         x = self.embedding(x)
         x, _ = self.lstm(x)
-        # x = self.a_softmax(self.outputs(x))
+        x = self.a_softmax(self.outputs(x))
         x = self.outputs(x)  # softmax is not necessary for usage with nn.CrossEntropyLoss()
         return x
 
@@ -181,8 +182,8 @@ class CustomLSTM(nn.Module):
 
 
 lstm = CustomLSTM()
-# outputs = lstm(a_)
-lstm.fit(n_epochs=10, dataloader=text_dataloader)
+outputs = lstm(a_)
+# lstm.fit(n_epochs=10, dataloader=text_dataloader)
 
 
 # preds = torch.argmax(output, dim=-1)
