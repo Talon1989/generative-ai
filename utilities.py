@@ -9,6 +9,14 @@ import torchvision
 from torch.utils.data import DataLoader, random_split
 
 
+class Swish(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return x / (1 + torch.exp(-x))
+
+
 def one_hot_transformation(y: np.array) -> np.array:
     """
     :param y: label encoded 1D np.array
