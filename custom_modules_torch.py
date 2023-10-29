@@ -57,7 +57,7 @@ class DownBlock(nn.Module):  # in_channels are lists
         for block in self.residual_blocks:
             x = block(x)
             skips.append(x)
-            counter += 1
+        counter += 1
         x = self.down_sample(x)
         return [x, skips]
 

@@ -91,14 +91,37 @@ class ResidualBlock(nn.Module):
 
 
 class DownBlock(nn.Module):
-    pass
+    def __init__(self, in_channels: np.array, width: int):
+        super().__init__()
+        self.residual_blocks = nn.ModuleList([
+            ResidualBlock(in_c, width) for in_c in in_channels
+        ])
+        self.down_sample = nn.AvgPool2d(kernel_size=2)
+
+    def forward(self, x: tuple):
+        x, skips = x
+        for block in self.residual_blocks:
+            x = block(x)
+            skips.append(x)
+        x = self.down_sample(x)
+        return x, skips
 
 
 class UpBlock(nn.Module):
-    pass
+    def __init__(self, in_channels: np.array, width: int):
+        super().__init__()
+        self.up_sample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+        self.residual_blocks = nn.ModuleList([
+            ResidualBlock(in_c, width) for in_c in in_channels
+        ])
 
-
-
+    def forward(self, x: tuple):
+        x, skips = x
+        x = self.up_sample(x)
+        for block in self.residual_blocks:
+            x = torch.cat([x, skips.pop()], dim=1)  # channel dimension
+            x = block(x)
+        return x, skips
 
 
 
