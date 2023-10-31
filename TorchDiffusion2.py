@@ -124,14 +124,44 @@ class UpBlock(nn.Module):
         return x, skips
 
 
+class UNET(nn.Module):
+    def __init__(self, n_channel: int, noise_embedding):
+        super().__init__()
+        self.input_conv = nn.Conv2d(n_channel, 32, kernel_size=1)
+        self.noise_embedding = noise_embedding
+        self.upsample = nn.Upsample(scale_factor=64, mode='nearest')
+        self.down_block_1 = DownBlock(in_channels=[64, 32], width=32)
+        self.down_block_2 = DownBlock(in_channels=[32, 64], width=64)
+        self.down_block_3 = DownBlock(in_channels=[64, 96], width=96)
+        self.residual_1 = ResidualBlock(input_shape=96, width=128)
+        self.residual_2 = ResidualBlock(input_shape=128, width=128)
+        self.up_block_1 = UpBlock(in_channels=[224, 192], width=96)
+        self.up_block_2 = UpBlock(in_channels=[160, 128], width=64)
+        self.up_block_3 = UpBlock(in_channels=[96, 64], width=32)
+        self.output_conv = nn.Conv2d(32, 3, kernel_size=1)
+        self.output_conv.weight.data.fill_(0.)
+
+    def forward(self, x: tuple):
+        noisy_images, noise_variance = x
+        noisy_images = self.input_conv(noisy_images)
+        noise_variance = self.upsample(self.noise_embedding(noise_variance))
+        x = torch.cat([noisy_images, noise_variance], dim=1)  # concat on channels
+        skips = []
+        x, skips = self.down_block_1((x, skips))
+        x, skips = self.down_block_2((x, skips))
+        x, skips = self.down_block_3((x, skips))
+        x = self.residual_2(self.residual_1(x))
+        x, skips = self.up_block_1((x, skips))
+        x, skips = self.up_block_2((x, skips))
+        x, _ = self.up_block_3((x, skips))
+        x = self.output_conv(x)
+        return x
 
 
-
-
-
-
-
-
+class DiffusionModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        pass
 
 
 
