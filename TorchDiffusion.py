@@ -129,6 +129,8 @@ def sinusoidal_embedding(x):
         )
     ).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
     angular_speeds = 2.0 * torch.pi * frequencies
+    print(angular_speeds.shape)
+    print(x.shape)
     embeddings = torch.cat(
         [torch.sin(angular_speeds * x), torch.cos(angular_speeds * x)],
         dim=1
@@ -283,6 +285,8 @@ class DiffusionModel(nn.Module):
         diffusion_times = torch.rand(size=(batch_size, 1, 1, 1))
         # use them to generate noise and signal rates
         noise_rates, signal_rates = self.diffusion_schedule(diffusion_times)
+        print(noise_rates.shape)
+        print()
         noisy_images = (signal_rates * images) + (noise_rates + noises)
 
         self.optimizer.zero_grad()

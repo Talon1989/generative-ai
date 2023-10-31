@@ -23,7 +23,7 @@ PATH = '/home/fabio/.kaggle/datasets/pytorch-challange-flower-dataset/dataset/'
 EMA = 999 / 1_000
 EMBEDDED_DIM = 32
 IMAGE_SIZE = 64
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 
 
 transform = torchvision.transforms.Compose([
@@ -144,13 +144,15 @@ class UNET(nn.Module):
     def forward(self, x: tuple):
         noisy_images, noise_variance = x
         noisy_images = self.input_conv(noisy_images)
-        noise_variance = self.upsample(self.noise_embedding(noise_variance))
+        noise_variance = self.noise_embedding(noise_variance)
+        noise_variance = self.upsample(noise_variance)
         x = torch.cat([noisy_images, noise_variance], dim=1)  # concat on channels
         skips = []
         x, skips = self.down_block_1((x, skips))
         x, skips = self.down_block_2((x, skips))
         x, skips = self.down_block_3((x, skips))
-        x = self.residual_2(self.residual_1(x))
+        x = self.residual_1(x)
+        x = self.residual_2(x)
         x, skips = self.up_block_1((x, skips))
         x, skips = self.up_block_2((x, skips))
         x, _ = self.up_block_3((x, skips))
@@ -158,21 +160,61 @@ class UNET(nn.Module):
         return x
 
 
+# WITHOUT NORMALIZER
 class DiffusionModel(nn.Module):
-    def __init__(self):
+    def __init__(self, unet_model: UNET, diff_schedule):
         super().__init__()
+        self.unet = unet_model
+        self.ema_unet = copy.deepcopy(self.unet)
+        self.diff_schedule = diff_schedule
+        self.unet_optimizer = torch.optim.AdamW(
+            params=self.unet.parameters(),
+            lr=1/1_000,
+            weight_decay=1/10_000
+        )
+        self.unet_criterion = nn.MSELoss()
+
+    def ema_soft_update(self):
+        for w, ema_w in zip(self.unet.parameters(), self.ema_unet.parameters()):
+            ema_w.data = EMA * ema_w.data + (1. - EMA) * w.data
+
+    def denoise(self, noisy_images, noise_rates, signal_rates, training):
+        if training:
+            self.unet.train()
+            pred_noises = self.unet((noisy_images, noise_rates ** 2))
+        else:
+            self.ema_unet.eval()
+            with torch.no_grad():
+                pred_noises = self.ema_unet((noisy_images, noise_rates ** 2))
+        pred_images = (noisy_images - (noise_rates * pred_noises)) / signal_rates
+        return pred_noises, pred_images
+
+    def train_step(self, images):
+        pass
+
+    def val_step(self, images):
+        pass
+
+    def reverse_diffusion(self, initial_noise, diffusion_steps):
+        pass
+
+    def generate(self, n_images, diffusion_steps):
         pass
 
 
+noises = torch.randn_like(images)
+batch_size = images.shape[0]
+diffusion_times = torch.rand(size=(batch_size, 1, 1, 1))
+noise_rates, signal_rates = cosine_diffusion_schedule(diffusion_times)
 
 
+unet = UNET(3, sinusoidal_embedding)
+# print(
+#     unet((images, noise_rates))
+# )
 
 
-
-
-
-
-
+diffusion_model = DiffusionModel(unet, cosine_diffusion_schedule)
 
 
 
