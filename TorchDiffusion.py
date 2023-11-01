@@ -285,9 +285,9 @@ class DiffusionModel(nn.Module):
         diffusion_times = torch.rand(size=(batch_size, 1, 1, 1))
         # use them to generate noise and signal rates
         noise_rates, signal_rates = self.diffusion_schedule(diffusion_times)
-        print(noise_rates.shape)
-        print()
-        noisy_images = (signal_rates * images) + (noise_rates + noises)
+        # print(noise_rates.shape)
+        # print()
+        noisy_images = (signal_rates * images) + (noise_rates * noises)
 
         self.optimizer.zero_grad()
         pred_noises, pred_images = self.denoise(

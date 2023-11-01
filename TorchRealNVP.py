@@ -107,8 +107,8 @@ class RealNVP(nn.Module):
         return torch.mean(-log_likelihood)
 
 
-realnvp = RealNVP(input_dim=2, n_coupling_layers=4)
-optimizer = torch.optim.Adam(params=realnvp.parameters(), lr=1/100_000, weight_decay=WEIGHT_DECAY)
+real_nvp = RealNVP(input_dim=2, n_coupling_layers=4)
+optimizer = torch.optim.Adam(params=real_nvp.parameters(), lr=1/100_000, weight_decay=WEIGHT_DECAY)
 
 
 def fit(model, optim, data, n_epochs=500):
@@ -124,7 +124,7 @@ def fit(model, optim, data, n_epochs=500):
         print('Episode %d | loss: %.4f' % (ep, losses[-1]))
 
 
-fit(realnvp, optimizer, normalized_data)
+fit(real_nvp, optimizer, normalized_data)
 
 
 

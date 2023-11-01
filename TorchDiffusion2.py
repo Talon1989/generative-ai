@@ -38,7 +38,7 @@ train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True
 val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 
-images, labels = next(iter(train_dataloader))
+images_, labels = next(iter(train_dataloader))
 # image = images[0].permute((1, 2, 0))
 # plt.imshow(image)
 # plt.axis('off')
@@ -173,6 +173,7 @@ class DiffusionModel(nn.Module):
             weight_decay=1/10_000
         )
         self.unet_criterion = nn.MSELoss()
+        # self.unet_criterion = nn.HuberLoss()
 
     def ema_soft_update(self):
         for w, ema_w in zip(self.unet.parameters(), self.ema_unet.parameters()):
@@ -189,23 +190,49 @@ class DiffusionModel(nn.Module):
         pred_images = (noisy_images - (noise_rates * pred_noises)) / signal_rates
         return pred_noises, pred_images
 
-    def train_step(self, images):
-        pass
-
-    def val_step(self, images):
-        pass
+    def train_step(self, images, validation=False):
+        noises = torch.randn_like(images)
+        diffusion_times = torch.rand(size=(images.shape[0], 1, 1, 1))  # sampled from U([0, 1])
+        noise_rates, signal_rates = self.diff_schedule(diffusion_times)
+        noisy_images = (signal_rates * images) + (noise_rates * noises)
+        if validation:
+            pred_noises, pred_images = self.denoise(noisy_images, noise_rates, signal_rates, False)
+            loss = self.unet_criterion(pred_noises, noises)
+            print('Validation Noise loss: %.4f\n' % loss.detach().numpy())
+        else:
+            self.unet_optimizer.zero_grad()
+            pred_noises, pred_images = self.denoise(noisy_images, noise_rates, signal_rates, True)
+            loss = self.unet_criterion(pred_noises, noises)
+            loss.backward()
+            # torch.nn.utils.clip_grad_norm(self.unet.parameters(), max_norm=1.)
+            self.unet_optimizer.step()
+            self.ema_soft_update()
+            print('Noise loss: %.4f\n' % loss.detach().numpy())
 
     def reverse_diffusion(self, initial_noise, diffusion_steps):
-        pass
+        n_images = initial_noise.shape[0]
+        step_size = 1. / diffusion_steps
+        current_images = initial_noise
+        pred_images = None
+        for step in range(diffusion_steps):
+            diffusion_times = torch.ones(size=(n_images, 1, 1, 1)) - step * step_size
+            noise_rates, signal_rates = self.diff_schedule(diffusion_times)
+            pred_noises, pred_images = self.denoise(current_images, noise_rates, signal_rates, False)
+            next_noise_rates, next_signal_rates = self.diff_schedule(diffusion_times - step_size)
+            # noisy_images in self.denoise
+            current_images = next_signal_rates * pred_images + next_noise_rates * pred_noises
+        return pred_images
 
     def generate(self, n_images, diffusion_steps):
-        pass
+        initial_noise = torch.rand(size=(n_images, 3, IMAGE_SIZE, IMAGE_SIZE))
+        generated_images = self.reverse_diffusion(initial_noise, diffusion_steps)
+        # generated_images = torch.clip(generated_images, min=0., max=1.)
+        return generated_images
 
 
-noises = torch.randn_like(images)
-batch_size = images.shape[0]
-diffusion_times = torch.rand(size=(batch_size, 1, 1, 1))
-noise_rates, signal_rates = cosine_diffusion_schedule(diffusion_times)
+noises_ = torch.randn_like(images_)
+diffusion_times_ = torch.rand(size=(images_.shape[0], 1, 1, 1))
+noise_rates_, signal_rates_ = cosine_diffusion_schedule(diffusion_times_)
 
 
 unet = UNET(3, sinusoidal_embedding)
