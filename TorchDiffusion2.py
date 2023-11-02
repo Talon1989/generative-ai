@@ -78,6 +78,7 @@ class ResidualBlock(nn.Module):
         self.conv_2 = nn.Conv2d(self.width, self.width, kernel_size=3, padding=1)
         self.normalizer = nn.BatchNorm2d(input_shape, affine=False)
         self.swish = Swish()
+        self.to(torch.float64)
 
     def forward(self, x):
         n_channels = x.shape[1]
@@ -98,6 +99,7 @@ class DownBlock(nn.Module):
             ResidualBlock(in_c, width) for in_c in in_channels
         ])
         self.down_sample = nn.AvgPool2d(kernel_size=2)
+        self.to(torch.float64)
 
     def forward(self, x: tuple):
         x, skips = x
@@ -115,6 +117,7 @@ class UpBlock(nn.Module):
         self.residual_blocks = nn.ModuleList([
             ResidualBlock(in_c, width) for in_c in in_channels
         ])
+        self.to(torch.float64)
 
     def forward(self, x: tuple):
         x, skips = x
@@ -141,9 +144,14 @@ class UNET(nn.Module):
         self.up_block_3 = UpBlock(in_channels=[96, 64], width=32)
         self.output_conv = nn.Conv2d(32, 3, kernel_size=1)
         self.output_conv.weight.data.fill_(0.)
+        self.to(torch.float64)
 
     def forward(self, x: tuple):
         noisy_images, noise_variance = x
+        # print(noisy_images.dtype)
+        noisy_images = noisy_images.double()
+        # print(noisy_images.dtype)
+        noise_variance = noise_variance.double()
         noisy_images = self.input_conv(noisy_images)
         noise_variance = self.noise_embedding(noise_variance)
         noise_variance = self.upsample(noise_variance)
@@ -179,6 +187,7 @@ class DiffusionModel(nn.Module):
         )
         # self.unet_criterion = nn.MSELoss()
         self.unet_criterion = nn.HuberLoss()
+        self.to(torch.float64)
 
     def ema_soft_update(self):
         for w, ema_w in zip(self.unet.parameters(), self.ema_unet.parameters()):
@@ -196,7 +205,7 @@ class DiffusionModel(nn.Module):
         return pred_noises, pred_images
 
     def train_step(self, images, validation=False):
-        noises = torch.randn_like(images)
+        noises = torch.randn_like(images).double()
         diffusion_times = torch.rand(size=(images.shape[0], 1, 1, 1))  # sampled from U([0, 1])
         noise_rates, signal_rates = self.diff_schedule(diffusion_times)
         noisy_images = (signal_rates * images) + (noise_rates * noises)
@@ -209,11 +218,11 @@ class DiffusionModel(nn.Module):
             self.unet_optimizer.zero_grad()
             pred_noises, pred_images = self.denoise(noisy_images, noise_rates, signal_rates, True)
             loss = self.unet_criterion(pred_noises, noises)
+            print(loss.dtype)
             loss.backward()
             # torch.nn.utils.clip_grad_norm(self.unet.parameters(), max_norm=1.)
             self.unet_optimizer.step()
             self.ema_soft_update()
-            # print('Noise loss: %.4f\n' % loss.detach().numpy())
             return loss.detach().numpy()
 
     def reverse_diffusion(self, initial_noise, diffusion_steps):
