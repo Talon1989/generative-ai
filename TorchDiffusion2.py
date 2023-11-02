@@ -24,6 +24,7 @@ EMA = 999 / 1_000
 EMBEDDED_DIM = 32
 IMAGE_SIZE = 64
 BATCH_SIZE = 64
+MODEL_PATH = '/home/fabio/PycharmProjects/generative-ai/data/models/pytorch_UNET.pth'
 
 
 transform = torchvision.transforms.Compose([
@@ -167,13 +168,17 @@ class DiffusionModel(nn.Module):
         self.unet = unet_model
         self.ema_unet = copy.deepcopy(self.unet)
         self.diff_schedule = diff_schedule
-        self.unet_optimizer = torch.optim.AdamW(
+        # self.unet_optimizer = torch.optim.AdamW(
+        #     params=self.unet.parameters(),
+        #     lr=1/1_000,
+        #     weight_decay=1/10_000
+        # )
+        self.unet_optimizer = torch.optim.Adam(
             params=self.unet.parameters(),
-            lr=1/1_000,
-            weight_decay=1/10_000
+            lr=1/10_000
         )
-        self.unet_criterion = nn.MSELoss()
-        # self.unet_criterion = nn.HuberLoss()
+        # self.unet_criterion = nn.MSELoss()
+        self.unet_criterion = nn.HuberLoss()
 
     def ema_soft_update(self):
         for w, ema_w in zip(self.unet.parameters(), self.ema_unet.parameters()):
@@ -198,7 +203,8 @@ class DiffusionModel(nn.Module):
         if validation:
             pred_noises, pred_images = self.denoise(noisy_images, noise_rates, signal_rates, False)
             loss = self.unet_criterion(pred_noises, noises)
-            print('Validation Noise loss: %.4f\n' % loss.detach().numpy())
+            # print('Validation Noise loss: %.4f\n' % loss.detach().numpy())
+            return loss.detach().numpy()
         else:
             self.unet_optimizer.zero_grad()
             pred_noises, pred_images = self.denoise(noisy_images, noise_rates, signal_rates, True)
@@ -207,7 +213,8 @@ class DiffusionModel(nn.Module):
             # torch.nn.utils.clip_grad_norm(self.unet.parameters(), max_norm=1.)
             self.unet_optimizer.step()
             self.ema_soft_update()
-            print('Noise loss: %.4f\n' % loss.detach().numpy())
+            # print('Noise loss: %.4f\n' % loss.detach().numpy())
+            return loss.detach().numpy()
 
     def reverse_diffusion(self, initial_noise, diffusion_steps):
         n_images = initial_noise.shape[0]
@@ -229,6 +236,25 @@ class DiffusionModel(nn.Module):
         # generated_images = torch.clip(generated_images, min=0., max=1.)
         return generated_images
 
+    def train_unet(self, n_epochs, train_data: DataLoader, validation_data, save_model=False):
+        for epoch in range(1, n_epochs + 1):
+            # training
+            for batch_idx, (images, _) in enumerate(train_data, start=1):
+                loss_value = self.train_step(images)
+                print('Epoch: %d | Batch %d/%d | Loss: %.4f'
+                      % (epoch, batch_idx, len(train_data), loss_value))
+            if save_model:
+                print('Saving the model ...')
+                torch.save(self.unet.state_dict(), MODEL_PATH)
+                print('Model saved.')
+            # validation
+            print('Evaluating loss on validation data')
+            cum_validation_loss = 0
+            for batch_idx, (images, _) in enumerate(validation_data, start=1):
+                print(str(batch_idx) + '/' + str(len(validation_data)))
+                cum_validation_loss += self.train_step(images, validation=True)
+            print('Cumulative validation loss %.4f' % cum_validation_loss)
+
 
 noises_ = torch.randn_like(images_)
 diffusion_times_ = torch.rand(size=(images_.shape[0], 1, 1, 1))
@@ -242,8 +268,7 @@ unet = UNET(3, sinusoidal_embedding)
 
 
 diffusion_model = DiffusionModel(unet, cosine_diffusion_schedule)
-
-
+diffusion_model.train_unet(50, train_dataloader, val_dataloader, save_model=True)
 
 
 
