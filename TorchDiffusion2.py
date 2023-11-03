@@ -12,6 +12,7 @@ import matplotlib
 # matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from utilities import Swish, display_image_torch
+from tqdm import tqdm
 
 
 '''
@@ -218,7 +219,7 @@ class DiffusionModel(nn.Module):
             self.unet_optimizer.zero_grad()
             pred_noises, pred_images = self.denoise(noisy_images, noise_rates, signal_rates, True)
             loss = self.unet_criterion(pred_noises, noises)
-            print(loss.dtype)
+            # print(loss.dtype)
             loss.backward()
             # torch.nn.utils.clip_grad_norm(self.unet.parameters(), max_norm=1.)
             self.unet_optimizer.step()
@@ -237,6 +238,7 @@ class DiffusionModel(nn.Module):
             next_noise_rates, next_signal_rates = self.diff_schedule(diffusion_times - step_size)
             # noisy_images in self.denoise
             current_images = next_signal_rates * pred_images + next_noise_rates * pred_noises
+            print('Step %d of %d complete' % (step+1, diffusion_steps))
         return pred_images
 
     def generate(self, n_images, diffusion_steps):
@@ -248,10 +250,14 @@ class DiffusionModel(nn.Module):
     def train_unet(self, n_epochs, train_data: DataLoader, validation_data, save_model=False):
         for epoch in range(1, n_epochs + 1):
             # training
-            for batch_idx, (images, _) in enumerate(train_data, start=1):
-                loss_value = self.train_step(images)
-                print('Epoch: %d | Batch %d/%d | Loss: %.4f'
-                      % (epoch, batch_idx, len(train_data), loss_value))
+            with tqdm(total=len(train_data)) as pbar:
+                for batch_idx, (images, _) in enumerate(train_data, start=1):
+                    loss_value = self.train_step(images)
+                    # print('Epoch: %d | Batch %d/%d | Loss: %.4f'
+                    #       % (epoch, batch_idx, len(train_data), loss_value))
+                    pbar.set_description('Epoch: %d | Batch %d/%d | Loss: %.4f'
+                          % (epoch, batch_idx, len(train_data), loss_value))
+                    pbar.update(1)
             if save_model:
                 print('Saving the model ...')
                 torch.save(self.unet.state_dict(), MODEL_PATH)
@@ -277,18 +283,27 @@ unet = UNET(3, sinusoidal_embedding)
 
 
 diffusion_model = DiffusionModel(unet, cosine_diffusion_schedule)
-diffusion_model.train_unet(50, train_dataloader, val_dataloader, save_model=True)
 
 
+# diffusion_model.train_unet(50, train_dataloader, val_dataloader, save_model=True)
 
 
+diffusion_model.unet.load_state_dict(torch.load(MODEL_PATH))
+
+diffusion_model.train_unet(50, train_dataloader, val_dataloader, save_model=False)
+
+# display_image_torch(images_[0], None)
+# generated_images = diffusion_model.generate(n_images=5, diffusion_steps=1_000)
+# display_image_torch(generated_images[0])
 
 
+# channel_means = torch.mean(generated_images, dim=(0, 2, 3))  # channel is 1
+# channel_stds = torch.std(generated_images, dim=(0, 2, 3))  # channel is 1
+# norm_gen_images = (generated_images - channel_means.view(1, -1, 1, 1)) / channel_stds.view(1, -1, 1, 1)
 
 
-
-
-
+# for i in range(5):
+#     display_image_torch(norm_gen_images[i])
 
 
 
