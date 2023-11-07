@@ -1,4 +1,3 @@
-import osdatasets
 import json
 import math
 import numpy as np
@@ -351,7 +350,7 @@ def train_model(**kwargs):
         accelerator='gpu' if str(device).startswith('cuda') else 'cpu',
         devices=1,
         gradient_clip_val=0.1,
-        default_root_dir=PATH,
+        # default_root_dir=PATH,
         callbacks=[
             pl.callbacks.ModelCheckpoint(
                 save_weights_only=True, mode='min', monitor='val_contrastive_divergence'),
