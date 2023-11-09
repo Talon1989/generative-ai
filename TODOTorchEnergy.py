@@ -14,7 +14,8 @@ import torch.nn as nn
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from utilities import Swish, display_image_torch
-import lightning as pl
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 
 
 '''
@@ -23,6 +24,7 @@ https://github.com/phlippe/uvadlc_notebooks/blob/master/docs/tutorial_notebooks/
 '''
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+MODEL_PATH = '/home/fabio/PycharmProjects/generative-ai/data/models/energy-mnist/'
 
 
 transform = transforms.Compose([
@@ -146,7 +148,7 @@ class Sampler:
                         n_steps=60, step_size=10, return_img_per_step=False):
         # before mcmc: since we are only interested in the gradient of the input,
         # set the model parameters to required_grad = False
-        is_training = model.trainning
+        is_training = model.training
         for p in model.parameters():
             p.requires_grad = False
         inp_images.requires_grad = True
@@ -228,7 +230,7 @@ class EnergyModel(pl.LightningModule):
     # Note that the validation/test step of energy-based models depends on what we are interested in the model
     def validation_step(self, batch, batch_idx):
         real_images, _ = batch
-        fake_images = torch.rand(real_images) * 2 - 1
+        fake_images = torch.rand_like(real_images) * 2 - 1
         inp_images = torch.cat([real_images, fake_images], dim=0)
         real_energy, fake_energy = self.energy_model(inp_images).chunk(2, dim=0)
         cd_loss = fake_energy.mean() - real_energy.mean()
@@ -300,8 +302,25 @@ class OutlierCallback(pl.Callback):
 
 
 def train_model(**kwargs):
-    pass
+    trainer = pl.Trainer(
+        default_root_dir=MODEL_PATH,
+        accelerator='gpu' if str(device).startswith('cuda') else 'cpu',
+        devices=1, max_epochs=60, gradient_clip_val=0.1,
+        callbacks=[
+            GenerateCallback(every_n_epochs=5),
+            SamplerCallback(every_n_epochs=5),
+            OutlierCallback(),
+            LearningRateMonitor('epoch')
+        ]
+    )
+    pl.seed_everything(42)
+    model = EnergyModel(**kwargs)
+    trainer.fit(model, train_dataloader, test_dataloader)
+    # model = EnergyModel.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
+    return model
 
+
+model = train_model(img_shape=(1, 28, 28), batch_size=train_dataloader.batch_size, lr=1e-4, beta=0.)
 
 
 
