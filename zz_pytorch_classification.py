@@ -6,6 +6,7 @@ from tqdm import tqdm
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import r2_score
 from utilities import one_hot_transformation
 
 
@@ -103,12 +104,24 @@ regressor = Regressor(3)
 optimizer = torch.optim.Adam(params=regressor.parameters(), lr=1/1_000)
 criterion = nn.MSELoss()
 
+with tqdm(total=500) as pbar:
+    for epoch in range(1, 501):
+        losses = []
+        for x, y in dataloader:
+            optimizer.zero_grad()
+            regressor.train()
+            preds = regressor(x)
+            loss = criterion(preds, y)
+            loss.backward()
+            optimizer.step()
+            losses.append(loss.detach().numpy())
+        if epoch % 10 == 0:
+            pbar.set_description('Epoch %d | Loss: %.4f' % (epoch, np.sum(losses)))
+        pbar.update(1)
 
-
-
-
-
-
+x_batch, y_batch = next(iter(dataloader))
+preds = regressor(x_batch).detach()
+print('R2 Score: %.3f' % r2_score(y_batch, preds))
 
 
 
