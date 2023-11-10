@@ -104,7 +104,7 @@ optimizer = torch.optim.Adam(params=regressor.parameters(), lr=1/1_000)
 criterion = nn.MSELoss()
 
 
-# todo training
+# todo train the model
 
 
 
