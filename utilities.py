@@ -22,7 +22,7 @@ def one_hot_transformation(y: np.array) -> np.array:
     :param y: label encoded 1D np.array
     :return:
     """
-    assert y.shape[1] is None
+    assert len(y.shape) == 1
     n_unique = len(np.unique(y))
     one_hot = np.zeros(shape=[y.shape[0], n_unique])
     for idx, val in enumerate(y):
